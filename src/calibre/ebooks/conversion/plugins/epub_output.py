@@ -190,7 +190,7 @@ class EPUBOutput(OutputFormatPlugin):
         self.workaround_webkit_quirks()
         self.upshift_markup()
         from calibre.ebooks.oeb.transforms.rescale import RescaleImages
-        RescaleImages()(oeb, opts)
+        RescaleImages(check_colorspaces=True)(oeb, opts)
 
         from calibre.ebooks.oeb.transforms.split import Split
         split = Split(not self.opts.dont_split_on_page_breaks,
@@ -379,6 +379,9 @@ class EPUBOutput(OutputFormatPlugin):
                 for x in XPath('//h:a[@name]')(body):
                     if not x.get('id', False):
                         x.set('id', x.get('name'))
+                    # The delightful epubcheck has started complaining about <a> tags that
+                    # have name attributes.
+                    x.attrib.pop('name')
 
                 # Replace <br> that are children of <body> as ADE doesn't handle them
                 for br in XPath('./h:br')(body):

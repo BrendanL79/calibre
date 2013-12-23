@@ -11,7 +11,7 @@ from calibre.web.feeds.news import BasicNewsRecipe
 class Spiegel_ger(BasicNewsRecipe):
     title                 = 'Spiegel Online - German'
     __author__            = 'Darko Miletic'
-    description           = "Immer die neueste Meldung auf dem Schirm, sekundenaktuell und uebersichtlich: Mit dem RSS-Angebot von SPIEGEL ONLINE entgeht Ihnen keine wichtige Meldung mehr, selbst wenn Sie keinen Internet-Browser geoeffnet haben. Sie koennen unsere Nachrichten-Feeds ganz einfach abonnieren - unkompliziert, kostenlos und nach Ihren persoenlichen Themen-Vorlieben."
+    description           = "Immer die neueste Meldung auf dem Schirm, sekundenaktuell und uebersichtlich: Mit dem RSS-Angebot von SPIEGEL ONLINE entgeht Ihnen keine wichtige Meldung mehr, selbst wenn Sie keinen Internet-Browser geoeffnet haben. Sie koennen unsere Nachrichten-Feeds ganz einfach abonnieren - unkompliziert, kostenlos und nach Ihren persoenlichen Themen-Vorlieben."  # noqa
     publisher             = 'SPIEGEL ONLINE Gmbh'
     category              = 'SPIEGEL ONLINE, DER SPIEGEL, Nachrichten, News,Dienste, RSS, RSS, Feedreader, Newsfeed, iGoogle, Netvibes, Widget'
     oldest_article        = 7
@@ -20,9 +20,18 @@ class Spiegel_ger(BasicNewsRecipe):
     lang                  = 'de-DE'
     no_stylesheets        = True
     use_embedded_content  = False
-    auto_cleanup = True
-    auto_cleanup_keep = '//*[@id="spArticleTopAsset"]'
     encoding              = 'cp1252'
+    keep_only_tags        = [
+        dict(name='h2', attrs={'class':'article-title'}),
+        dict(id=['js-article-top-wide-asset', 'js-article-column']),
+    ]
+    remove_tags = [
+        dict(attrs={'class':lambda x: x and 'asset-html-box' in x.split()}),
+        dict(attrs={'class':lambda x: x and 'article-social-bookmark' in x.split()}),
+        dict(attrs={'class':lambda x: x and 'article-newsfeed-box' in x.split()}),
+        dict(attrs={'class':lambda x: x and 'article-comments-box' in x.split()}),
+        dict(attrs={'class':lambda x: x and 'article-functions-bottom' in x.split()}),
+    ]
 
     conversion_options = {
                           'comment'          : description
@@ -31,10 +40,5 @@ class Spiegel_ger(BasicNewsRecipe):
                         , 'language'         : lang
                         }
 
-
-
-
     feeds          = [(u'Spiegel Online', u'http://www.spiegel.de/schlagzeilen/index.rss')]
-
-
 

@@ -102,6 +102,7 @@ defs['auto_add_path'] = None
 defs['auto_add_check_for_duplicates'] = False
 defs['blocked_auto_formats'] = []
 defs['auto_add_auto_convert'] = True
+defs['auto_add_everything'] = False
 defs['ui_style'] = 'calibre' if iswindows or isosx else 'system'
 defs['tag_browser_old_look'] = False
 defs['book_list_tooltips'] = True
@@ -120,6 +121,7 @@ defs['cover_grid_disk_cache_size'] = 2500
 defs['cover_grid_show_title'] = False
 defs['cover_grid_texture'] = None
 defs['show_vl_tabs'] = False
+defs['show_highlight_toggle_button'] = False
 del defs
 # }}}
 
@@ -583,6 +585,16 @@ def file_icon_provider():
     initialize_file_icon_provider()
     return _file_icon_provider
 
+def select_initial_dir(q):
+    while q:
+        c = os.path.dirname(q)
+        if c == q:
+            break
+        if os.path.exists(c):
+            return c
+        q = c
+    return os.path.expanduser('~')
+
 class FileDialog(QObject):
     def __init__(self, title=_('Choose Files'),
                        filters=[],
@@ -618,6 +630,8 @@ class FileDialog(QObject):
                     os.path.expanduser(default_dir))
         if not isinstance(initial_dir, basestring):
             initial_dir = os.path.expanduser(default_dir)
+        if not initial_dir or not os.path.exists(initial_dir):
+            initial_dir = select_initial_dir(initial_dir)
         self.selected_files = []
         use_native_dialog = 'CALIBRE_NO_NATIVE_FILEDIALOGS' not in os.environ
         with SanitizeLibraryPath():
@@ -803,6 +817,20 @@ def load_builtin_fonts():
                     if u'calibre Symbols' in fam:
                         _rating_font = u'calibre Symbols'
 
+def setup_gui_option_parser(parser):
+    if islinux:
+        parser.add_option('--detach', default=False, action='store_true',
+                          help='Detach from the controlling terminal, if any (linux only)')
+
+def detach_gui():
+    if islinux and not DEBUG and sys.stdout.isatty():
+        # We are a GUI process running in a terminal so detach from the controlling terminal
+        if os.fork() != 0:
+            raise SystemExit(0)
+        os.setsid()
+        so, se = file(os.devnull, 'a+'), file(os.devnull, 'a+', 0)
+        os.dup2(so.fileno(), sys.__stdout__.fileno())
+        os.dup2(se.fileno(), sys.__stderr__.fileno())
 
 class Application(QApplication):
 
@@ -824,7 +852,6 @@ class Application(QApplication):
         self._file_open_paths = []
         self._file_open_lock = RLock()
         self.setup_styles(force_calibre_style)
-
     if DEBUG:
         def notify(self, receiver, event):
             if self.redirect_notify:
@@ -862,26 +889,28 @@ class Application(QApplication):
         icon_map = {}
         pcache = {}
         for k, v in {
-                'DialogYesButton': u'ok.png',
-                'DialogNoButton': u'window-close.png',
-                'DialogCloseButton': u'window-close.png',
-                'DialogOkButton': u'ok.png',
-                'DialogCancelButton': u'window-close.png',
-                'DialogHelpButton': u'help.png',
-                'DialogOpenButton': u'document_open.png',
-                'DialogSaveButton': u'save.png',
-                'DialogApplyButton': u'ok.png',
-                'DialogDiscardButton': u'trash.png',
-                'MessageBoxInformation': u'dialog_information.png',
-                'MessageBoxWarning': u'dialog_warning.png',
-                'MessageBoxCritical': u'dialog_error.png',
-                'MessageBoxQuestion': u'dialog_question.png',
-                # These two are used to calculate the sizes for the doc widget
-                # title bar buttons, therefore, they have to exist. The actual
-                # icon is not used.
-                'TitleBarCloseButton': u'window-close.png',
-                'TitleBarNormalButton': u'window-close.png',
-                }.iteritems():
+            'DialogYesButton': u'ok.png',
+            'DialogNoButton': u'window-close.png',
+            'DialogCloseButton': u'window-close.png',
+            'DialogOkButton': u'ok.png',
+            'DialogCancelButton': u'window-close.png',
+            'DialogHelpButton': u'help.png',
+            'DialogOpenButton': u'document_open.png',
+            'DialogSaveButton': u'save.png',
+            'DialogApplyButton': u'ok.png',
+            'DialogDiscardButton': u'trash.png',
+            'MessageBoxInformation': u'dialog_information.png',
+            'MessageBoxWarning': u'dialog_warning.png',
+            'MessageBoxCritical': u'dialog_error.png',
+            'MessageBoxQuestion': u'dialog_question.png',
+            'BrowserReload': u'view-refresh.png',
+            # These two are used to calculate the sizes for the doc widget
+            # title bar buttons, therefore, they have to exist. The actual
+            # icon is not used.
+            'TitleBarCloseButton': u'window-close.png',
+            'TitleBarNormalButton': u'window-close.png',
+            'DockWidgetCloseButton': u'window-close.png',
+        }.iteritems():
             if v not in pcache:
                 p = I(v)
                 if isinstance(p, bytes):
@@ -1023,6 +1052,25 @@ _rating_font = 'Arial Unicode MS' if iswindows else 'sans-serif'
 def rating_font():
     global _rating_font
     return _rating_font
+
+def elided_text(text, font=None, width=300, pos='middle'):
+    ''' Return a version of text that is no wider than width pixels when
+    rendered, replacing characters from the left, middle or right (as per pos)
+    of the string with an ellipsis. Results in a string much closer to the
+    limit than Qt's elidedText().'''
+    from PyQt4.Qt import QFontMetrics, QApplication
+    fm = QApplication.fontMetrics() if font is None else QFontMetrics(font)
+    delta = 4
+    ellipsis = u'\u2026'
+
+    def remove_middle(x):
+        mid = len(x) // 2
+        return x[:max(0, mid - (delta//2))] + ellipsis + x[mid + (delta//2):]
+
+    chomp = {'middle':remove_middle, 'left':lambda x:(ellipsis + x[delta:]), 'right':lambda x:(x[:-delta] + ellipsis)}[pos]
+    while len(text) > delta and fm.width(text) > width:
+        text = chomp(text)
+    return unicode(text)
 
 def find_forms(srcdir):
     base = os.path.join(srcdir, 'calibre', 'gui2')

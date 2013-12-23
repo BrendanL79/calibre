@@ -13,7 +13,24 @@ Test a binary calibre build to ensure that all needed binary images/libraries ha
 '''
 
 import cStringIO
-from calibre.constants import plugins, iswindows
+from calibre.constants import plugins, iswindows, islinux
+
+def test_dbus():
+    import dbus
+    bus = dbus.SystemBus()
+    if not bus.list_names():
+        raise ValueError('Failed to list names on the system bus')
+    bus = dbus.SessionBus()
+    if not bus.list_names():
+        raise ValueError('Failed to list names on the session bus')
+    del bus
+    print ('dbus OK!')
+
+def test_regex():
+    import regex
+    if regex.findall(r'(?i)(a)(b)', 'ab cd AB 1a1b') != [('a', 'b'), ('A', 'B')]:
+        raise ValueError('regex module failed on a simple search')
+    print ('regex OK!')
 
 def test_html5lib():
     import html5lib.html5parser  # noqa
@@ -53,7 +70,8 @@ def test_sqlite():
     print ('sqlite OK!')
 
 def test_qt():
-    from PyQt4.Qt import (QWebView, QDialog, QImageReader, QNetworkAccessManager)
+    from PyQt4.Qt import (QDialog, QImageReader, QNetworkAccessManager)
+    from PyQt4.QtWebKit import QWebView
     fmts = set(map(unicode, QImageReader.supportedImageFormats()))
     testf = set(['jpg', 'png', 'mng', 'svg', 'ico', 'gif'])
     if testf.intersection(fmts) != testf:
@@ -109,6 +127,14 @@ def test_woff():
     test()
     print ('WOFF ok!')
 
+def test_magick():
+    from calibre.utils.magick import create_canvas
+    i = create_canvas(100, 100)
+    from calibre.gui2.tweak_book.editor.canvas import qimage_to_magick, magick_to_qimage
+    img = magick_to_qimage(i)
+    i = qimage_to_magick(img)
+    print ('magick OK!')
+
 def test():
     test_plugins()
     test_lxml()
@@ -119,9 +145,13 @@ def test():
     test_woff()
     test_qt()
     test_html5lib()
+    test_regex()
+    test_magick()
     if iswindows:
         test_winutil()
         test_wpd()
+    if islinux:
+        test_dbus()
 
 if __name__ == '__main__':
     test()

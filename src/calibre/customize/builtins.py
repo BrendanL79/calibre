@@ -885,7 +885,7 @@ class ActionChooseLibrary(InterfaceActionBase):
 class ActionAddToLibrary(InterfaceActionBase):
     name = 'Add To Library'
     actual_plugin = 'calibre.gui2.actions.add_to_library:AddToLibraryAction'
-    description = _('Copy books from the devce to your calibre library')
+    description = _('Copy books from the device to your calibre library')
 
 class ActionEditCollections(InterfaceActionBase):
     name = 'Edit Collections'
@@ -905,7 +905,12 @@ class ActionCopyToLibrary(InterfaceActionBase):
 class ActionTweakEpub(InterfaceActionBase):
     name = 'Tweak ePub'
     actual_plugin = 'calibre.gui2.actions.tweak_epub:TweakEpubAction'
-    description = _('Make small tweaks to epub or htmlz files in your calibre library')
+    description = _('Edit ebooks in the epub or azw3 formats')
+
+class ActionUnpackBook(InterfaceActionBase):
+    name = 'Unpack Book'
+    actual_plugin = 'calibre.gui2.actions.unpack_book:UnpackBookAction'
+    description = _('Make small changes to epub or htmlz files in your calibre library')
 
 class ActionNextMatch(InterfaceActionBase):
     name = 'Next Match'
@@ -957,7 +962,7 @@ plugins += [ActionAdd, ActionFetchAnnotations, ActionGenerateCatalog,
         ActionShowBookDetails,ActionRestart, ActionOpenFolder, ActionConnectShare,
         ActionSendToDevice, ActionHelp, ActionPreferences, ActionSimilarBooks,
         ActionAddToLibrary, ActionEditCollections, ActionMatchBooks, ActionChooseLibrary,
-        ActionCopyToLibrary, ActionTweakEpub, ActionNextMatch, ActionStore,
+        ActionCopyToLibrary, ActionTweakEpub, ActionUnpackBook, ActionNextMatch, ActionStore,
         ActionPluginUpdater, ActionPickRandom, ActionEditToC, ActionSortBy,
         ActionMarkBooks]
 

@@ -122,11 +122,11 @@ The EPUB I produced with |app| is not valid?
 
 |app| does not guarantee that an EPUB produced by it is valid. The only
 guarantee it makes is that if you feed it valid XHTML 1.1 + CSS 2.1 it will
-output a valid EPUB. |app| is designed for ebook consumers, not producers. It
-tries hard to ensure that EPUBs it produces actually work as intended on a wide
-variety of devices, a goal that is incompatible with producing valid EPUBs, and
-one that is far more important to the vast majority of its users. If you need a
-tool that always produces valid EPUBs, |app| is not for you.
+output a valid EPUB. |app| tries hard to ensure that EPUBs it produces actually
+work as intended on a wide variety of devices, a goal that is incompatible with
+producing valid EPUBs, and one that is far more important to the vast majority
+of its users. If you need a tool that always produces valid EPUBs, |app| is not
+for you.
 
 How do I use some of the advanced features of the conversion tools?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -442,7 +442,10 @@ that does not come from a well known relay. The most robust way to setup email s
   * Create a free GMail account at `Google <http://www.gmail.com>`_. 
   * Goto Preferences->Email in |app| and click the "Use Gmail" button and fill in the information asked for.
   * |app| will then use GMail to send the mail.
-  * If you are sending to your Kindle, remember to update the email preferences on your Amazon Kindle page to allow email sent from your GMail email address.
+  * If you are sending to your Kindle, remember to update the email preferences
+    on your Amazon Kindle page to allow email sent from your GMail email
+    address. Also note that Amazon does not allow email delivery of AZW3 and
+    new style (KF8) MOBI files.
 
 Even after doing this, you may have problems. One common source of problems is that some poorly designed antivirus
 programs block |app| from opening a connection to send email. Try adding an exclusion for |app| in your
@@ -670,7 +673,7 @@ computers. Run |app| on a single computer and access it via the Content Server
 or a Remote Desktop solution.
 
 If you must share the actual library, use a file syncing tool like
-DropBox or rsync or Microsoft SkyDrive instead of a networked drive. If you are
+DropBox or rsync instead of a networked drive. If you are
 using a file-syncing tool it is **essential** that you make sure that both
 |app| and the file syncing tool do not try to access the |app| library at the
 same time. In other words, **do not** run the file syncing tool and |app| at

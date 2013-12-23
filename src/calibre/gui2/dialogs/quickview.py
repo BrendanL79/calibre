@@ -6,7 +6,7 @@ __docformat__ = 'restructuredtext en'
 
 from PyQt4.Qt import (Qt, QDialog, QAbstractItemView, QTableWidgetItem,
                       QListWidgetItem, QByteArray, QCoreApplication,
-                      QApplication, pyqtSignal)
+                      QApplication, pyqtSignal, QDialogButtonBox)
 
 from calibre.customize.ui import find_plugin
 from calibre.gui2 import gprefs
@@ -64,6 +64,7 @@ class Quickview(QDialog, Ui_Quickview):
         # Remove the help button from the window title bar
         icon = self.windowIcon()
         self.setWindowFlags(self.windowFlags()&(~Qt.WindowContextHelpButtonHint))
+        self.setWindowFlags(self.windowFlags()|Qt.WindowStaysOnTopHint)
         self.setWindowIcon(icon)
 
         self.db = view.model().db
@@ -77,6 +78,13 @@ class Quickview(QDialog, Ui_Quickview):
         self.current_item = None
         self.no_valid_items = False
 
+        column_positions = self.view.get_state()['column_positions']
+        column_order = ['title', 'authors',  'series']
+        column_order.sort(key=lambda col: column_positions[col])
+        self.title_column = column_order.index('title')
+        self.author_column = column_order.index('authors')
+        self.series_column = column_order.index('series')
+
         self.items.setSelectionMode(QAbstractItemView.SingleSelection)
         self.items.currentTextChanged.connect(self.item_selected)
 
@@ -85,14 +93,14 @@ class Quickview(QDialog, Ui_Quickview):
         self.books_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.books_table.setColumnCount(3)
         t = QTableWidgetItem(_('Title'))
-        self.books_table.setHorizontalHeaderItem(0, t)
+        self.books_table.setHorizontalHeaderItem(self.title_column, t)
         t = QTableWidgetItem(_('Authors'))
-        self.books_table.setHorizontalHeaderItem(1, t)
+        self.books_table.setHorizontalHeaderItem(self.author_column, t)
         t = QTableWidgetItem(_('Series'))
-        self.books_table.setHorizontalHeaderItem(2, t)
+        self.books_table.setHorizontalHeaderItem(self.series_column, t)
         self.books_table_header_height = self.books_table.height()
         self.books_table.cellDoubleClicked.connect(self.book_doubleclicked)
-        self.books_table.sortByColumn(0, Qt.AscendingOrder)
+        self.books_table.sortByColumn(self.title_column, Qt.AscendingOrder)
 
         # get the standard table row height. Do this here because calling
         # resizeRowsToContents can word wrap long cell contents, creating
@@ -112,14 +120,8 @@ class Quickview(QDialog, Ui_Quickview):
         self.search_button.clicked.connect(self.do_search)
         view.model().new_bookdisplay_data.connect(self.book_was_changed)
 
-    def set_database(self, db):
-        self.db = db
-        self.items.blockSignals(True)
-        self.books_table.blockSignals(True)
-        self.items.clear()
-        self.books_table.setRowCount(0)
-        self.books_table.blockSignals(False)
-        self.items.blockSignals(False)
+        close_button = self.buttonBox.button(QDialogButtonBox.Close)
+        close_button.setAutoDefault(False)
 
     # search button
     def do_search(self):
@@ -138,7 +140,7 @@ class Quickview(QDialog, Ui_Quickview):
         # view is changed, triggering a book_was_changed signal. Unfortunately
         # this happens before the library_changed actions are run, meaning we
         # still have the old database. To avoid the problem we just ignore the
-        # operation if we get an exception. The set_database will come
+        # operation if we get an exception. The "close" will come
         # eventually.
         try:
             self.refresh(self.view.model().index(self.db.row(mi.id), self.current_column))
@@ -153,6 +155,9 @@ class Quickview(QDialog, Ui_Quickview):
 
     # Given a cell in the library view, display the information
     def refresh(self, idx):
+        if self.lock_qv.isChecked():
+            return
+
         bv_row = idx.row()
         self.current_column = idx.column()
         key = self.view.model().column_map[self.current_column]
@@ -167,7 +172,7 @@ class Quickview(QDialog, Ui_Quickview):
                 self.indicate_no_items()
                 return
             key = self.current_key
-        self.items_label.setText('{0} ({1})'.format(
+        self.items_label.setText(_('&Item: {0} ({1})').format(
                                     self.db.field_metadata[key]['name'], key))
 
         self.items.blockSignals(True)
@@ -219,7 +224,7 @@ class Quickview(QDialog, Ui_Quickview):
                                sort_results=False)
 
         self.books_table.setRowCount(len(books))
-        self.books_label.setText(_('Books with selected item "{0}": {1}').
+        self.books_label.setText(_('&Books with selected item "{0}": {1}').
                                  format(selected_item, len(books)))
 
         select_item = None
@@ -233,18 +238,18 @@ class Quickview(QDialog, Ui_Quickview):
             a = TableItem(mi.title, mi.title_sort)
             a.setData(Qt.UserRole, b)
             a.setToolTip(tt)
-            self.books_table.setItem(row, 0, a)
+            self.books_table.setItem(row, self.title_column, a)
             if b == self.current_book_id:
                 select_item = a
             a = TableItem(' & '.join(mi.authors), mi.author_sort)
             a.setToolTip(tt)
-            self.books_table.setItem(row, 1, a)
+            self.books_table.setItem(row, self.author_column, a)
             series = mi.format_field('series')[1]
             if series is None:
                 series = ''
             a = TableItem(series, mi.series, mi.series_index)
             a.setToolTip(tt)
-            self.books_table.setItem(row, 2, a)
+            self.books_table.setItem(row, self.series_column, a)
             self.books_table.setRowHeight(row, self.books_table_row_height)
 
         self.books_table.setSortingEnabled(True)
@@ -272,7 +277,7 @@ class Quickview(QDialog, Ui_Quickview):
     def book_doubleclicked(self, row, column):
         if self.no_valid_items:
             return
-        book_id = self.books_table.item(row, 0).data(Qt.UserRole).toInt()[0]
+        book_id = self.books_table.item(row, self.title_column).data(Qt.UserRole).toInt()[0]
         self.view.select_rows([book_id])
         modifiers = int(QApplication.keyboardModifiers())
         if modifiers in (Qt.CTRL, Qt.SHIFT):
@@ -296,7 +301,7 @@ class Quickview(QDialog, Ui_Quickview):
         gprefs['quickview_dialog_books_table_widths'] = self.books_table_column_widths
         gprefs['quickview_dialog_geometry'] = bytearray(self.saveGeometry())
 
-    def close(self):
+    def _close(self):
         self.save_state()
         # clean up to prevent memory leaks
         self.db = self.view = self.gui = None
@@ -304,10 +309,10 @@ class Quickview(QDialog, Ui_Quickview):
 
     # called by the window system
     def closeEvent(self, *args):
-        self.close()
+        self._close()
         QDialog.closeEvent(self, *args)
 
     # called by the close button
     def reject(self):
-        self.close()
+        self._close()
         QDialog.reject(self)

@@ -56,7 +56,7 @@ def get_cover_data(stream, ext):  # {{{
 
 Settings = namedtuple('Settings', 'remove_all remove add au aus do_aus rating pub do_series do_autonumber do_remove_format '
                       'remove_format do_swap_ta do_remove_conv do_auto_author series do_series_restart series_start_value '
-                      'do_title_case cover_action clear_series pubdate adddate do_title_sort languages clear_languages restore_original comments')
+                      'do_title_case cover_action clear_series clear_pub pubdate adddate do_title_sort languages clear_languages restore_original comments')
 null = object()
 
 class MyBlockingBusy(QDialog):  # {{{
@@ -239,6 +239,9 @@ class MyBlockingBusy(QDialog):  # {{{
         # Various fields
         if args.rating != -1:
             cache.set_field('rating', {bid:args.rating*2 for bid in self.ids})
+
+        if args.clear_pub:
+            cache.set_field('publisher', {bid:'' for bid in self.ids})
 
         if args.pub:
             cache.set_field('publisher', {bid:args.pub for bid in self.ids})
@@ -582,6 +585,8 @@ class MetadataBulkDialog(ResizableDialog, Ui_MetadataBulkDialog):
             fm = self.db.metadata_for_field(field)
             if field == 'sort':
                 val = mi.get('title_sort', None)
+            elif fm['datatype'] == 'datetime':
+                val = mi.format_field(field)[1]
             else:
                 val = mi.get(field, None)
             if isinstance(val, (int, float, bool)):
@@ -728,8 +733,10 @@ class MetadataBulkDialog(ResizableDialog, Ui_MetadataBulkDialog):
             return ''
         dest = self.s_r_df_itemdata(None)
         if dest == '':
-            if self.db.metadata_for_field(src)['datatype'] == 'composite':
-                raise Exception(_('You must specify a destination when source is a composite field'))
+            if (src == '{template}' or
+                        self.db.metadata_for_field(src)['datatype'] == 'composite'):
+                raise Exception(_('You must specify a destination when source is '
+                                  'a composite field or a template'))
             dest = src
         dest_mode = self.replace_mode.currentIndex()
 
@@ -957,6 +964,7 @@ class MetadataBulkDialog(ResizableDialog, Ui_MetadataBulkDialog):
         pub = unicode(self.publisher.text())
         do_series = self.write_series
         clear_series = self.clear_series.isChecked()
+        clear_pub = self.clear_pub.isChecked()
         series = unicode(self.series.currentText()).strip()
         do_autonumber = self.autonumber_series.isChecked()
         do_series_restart = self.series_numbering_restarts.isChecked()
@@ -992,7 +1000,7 @@ class MetadataBulkDialog(ResizableDialog, Ui_MetadataBulkDialog):
         args = Settings(remove_all, remove, add, au, aus, do_aus, rating, pub, do_series,
                 do_autonumber, do_remove_format, remove_format, do_swap_ta,
                 do_remove_conv, do_auto_author, series, do_series_restart,
-                series_start_value, do_title_case, cover_action, clear_series,
+                series_start_value, do_title_case, cover_action, clear_series, clear_pub,
                 pubdate, adddate, do_title_sort, languages, clear_languages,
                 restore_original, self.comments)
 
@@ -1023,7 +1031,7 @@ class MetadataBulkDialog(ResizableDialog, Ui_MetadataBulkDialog):
         return QDialog.accept(self)
 
     def series_changed(self, *args):
-        self.write_series = True
+        self.write_series = bool(unicode(self.series.currentText()).strip())
         self.autonumber_series.setEnabled(True)
 
     def s_r_remove_query(self, *args):

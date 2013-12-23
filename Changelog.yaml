@@ -20,6 +20,354 @@
 #   new recipes:
 #     - title: 
 
+- version: 1.16.0
+  date: 2013-12-20
+
+  new features:
+    - title: "Edit book: Add a tool to browse all images in the book with their thumbnails. Useful for visually locating an image. To launch it, use View->Browse images in book."
+
+    - title: "Edit book: Allow creation of new, empty books via File->Create new book"
+
+    - title: "Edit book: Add buttons to easily create formatting such as bold/italic/colors/etc. when editing HTML files"
+
+    - title: "Edit book: Add button to easily insert <img> tag while editing HTML"
+
+    - title: "Edit book: Add options to change the default font families/sizes for the preview panel"
+
+    - title: "Edit book: Allow customizing which dockable windows occupy the four dock corners via Edit->Preferences. You can now also choose to have more than one row of windows in a given dock area."
+
+  bug fixes:
+    - title: "Edit book: When editing AZW3 files with no images in them, do not incorrectly display a number of binary records from the AZW3 file as 'unknown' miscellaneous files"
+
+    - title: "Edit book: Fix marking image as cover not working for AZW3 files if the file did not previously have a cover"
+
+    - title: "AZW3 Output: Do not refuse to create the ToC if it has only a single entry"
+
+    - title: "Edit book: Fix crashes when processing some books that contain malformed markup on OS X and windows 64bit machines"
+
+    - title: "Edit book: Fix error when renaming the html file currently displayed in the preview panel and that file is not the file being currently edited"
+
+    - title: "Edit book: Fix crash when editing books that have links to absolute paths."
+      tickets: [1261337]
+
+    - title: "Edit book: Fix book not being marked as modified after editing the ToC"
+
+    - title: "Edit book: When syncing the position of the preview panel to the cursor in the editor and the cursor is at or before the <body> tag set the position of the preview panel to the top of the file, so that the top margin of the body tag is seen easily."
+
+    - title: "Edit book: Fix trying to import an html file/css file via the add new file button always resulting in a blank file"
+
+    - title: "Edit book: Fix replacing a file with another file with exactly the same filename causing an error."
+      tickets: [1260822]
+
+    - title: "Edit book: Have the ToC view refresh itself after any major operation on the book"
+
+    - title: "Edit book: Fix pasting in the image editor not working"
+
+  improved recipes:
+    - NZZ
+    - Spiegel Online
+    - Daily Mail
+    - FAZ.net
+
+- version: 1.15.0
+  date: 2013-12-13
+
+  new features:
+    - title: "A new book editor, capable of editing files in the EPUB and AZW3 (Kindle) formats"
+      type: major
+      description: "Right click on any book in calibre and choose 'Edit Book', to edit e-books in the EPUB and AZW3 formats. The new editor allows you to edit the HTML/CSS and images inside the ebooks in a seamless fashion, with live preview of your changes and many helpful automated tools for checking the book for errors, editing the table of contents, merging, splitting, bulk renaming and so on. See http://manual.calibre-ebook.com/edit.html for more details and help using the new editor. Note that the editor is a completely new codebase and is still being actively developed, so expect a few bugs and many new features in the near future. However, the editor as it stands is extremely useable and useful today. Note that it replaces the old 'Tweak Book' feature in calibre. If you want the old Tweak Book back, it has been renamed to 'Unpack Book', you can go to Preferences->Toolbars and add it back. Happy holidays!"
+
+    - title: "Edit metadata dialog: In the tag editor, allow easy filtering of the lists of available and applied tags."
+
+    - title: "Driver for Onyx Boox C65."
+      tickets: [1259914]
+ 
+  bug fixes:
+    - title: "Kobo driver: Fix book covers not showing for sideloaded kepubs on the book details screen, with newer Kobo firmware."
+      tickets: [1260279]
+
+    - title: "Content server: Popup a more useful error when clicking on the cover of a book that has no formats to view."
+      tickets: [1260216]
+
+    - title: "Cover grid: Fix text showing 'None' for rating fields for books with no rating"
+
+    - title: "Cover grid: Set text color based on the background color/image being used."
+      tickets: [1258754]
+
+    - title: "Metadata editor: Fix removing formatting for comments not removing background colors."
+      tickets: [1258975]
+
+    - title: "EPUB Output: Remove name attribute from <a> tags (replacing with id) to keep the asinine epubcheck happy"
+
+- version: 1.14.0
+  date: 2013-12-06
+
+  new features:
+    - title: "Edit metadata dialog: Add the ability to trim covers manually, if automatic trimming is not satisfactory."
+      tickets: [1256054]
+
+    - title: "You can now show any metadata field below the covers in the cover grid view, not just title. To change the displayed field go to Preferences->Look & Feel->Cover Grid."
+
+    - title: "Allow searching for plugins by name in the install new plugins dialog"
+
+    - title: "Kobo driver: Allow sending kepubs to older kobo devices as well, also add support for firmware 3.1"
+      tickets: [1257972, 1257143]
+
+    - title: "Allow viewer plugins to customize the viewer's user interface"
+ 
+  bug fixes:
+    - title: "Table of Contents Editor: Handle generating ToC from headings if the first heading level in the document is not h1 or the document skips some intermediate heading levels"
+
+    - title: "Update the metadata download and Get Books plugins for ozon.ru"
+
+    - title: "Fix sending by email not working on computers with non-ascii hostnames."
+      tickets: [1256549]
+
+    - title: "Wireless driver: Fix launching programs from within calibre causing the wireless driver port to remain in use even after calibre is shutdown."
+      tickets: [1256198]
+
+  improved recipes:
+    - Kommersant
+    - Pocket
+    - Heraldo de Aragon
+    - National Geographic Magazine
+    - Los Angeles Times
+    - Boerse Online
+    - Reuters
+
+- version: 1.13.0
+  date: 2013-11-29
+
+  new features:
+    - title: "Edit metadata dialog: Facilitate editing the authors for books that have a large number of authors, by using a dedicated 'Edit authors' tool, which you can launch by right clicking the authors in the edit metadata dialog
+and selecting 'Edit authors'."
+      tickets: [1255288]
+
+    - title: "Conversion: Fix specifying shorthand properties in filter css not working. Now all shorthand properties automatically filter out all the properties they are shorthand for."
+
+    - title: "Kobo driver: support new firmware version 3.0.1"
+
+    - title: "Wireless device driver: Cache metadata on a per device basis."
+      description: "Allows for using different cover thumbnail sizes on different devices. Will force device to resend all metadata the first time it is connected after this upgrade."
+
+  bug fixes:
+    - title: "Metadata download: Update code to get covers via google image search to handle changes to the google website."
+      tickets: [1254973]
+
+    - title: "Searching: When searching for identifiers, fix searching for values that contain colons not working. Also fix escaped parentheses not being parsed correctly."
+
+    - title: "Match books on device: Fix parentheses in book titles not being escaped when searching for matches."
+      tickets: [1255671]
+
+    - title: "Match books on device: Fix thumbnail in device metadata cache not being updated when matching books."
+      tickets: [1255676]
+
+    - title: "File open dialogs; If the previously used initial directory, no longer exists, use a directory one level up."
+      tickets: [1255216]
+
+    - title: "EPUB Output: Strip -- from inside comments, as some ebook reading apps cannot handle them."
+      tickets: [1256059]
+
+    - title: "Fix a regression in the previous release that broke the Kobo third party plugins"
+
+    - title: "Fix QuickView windows not staying on top on some linux systems"
+      tickets: [1253922]
+
+    - title: "Fixes for website changes for various Get Books Polish language stores"
+
+    - title: "Metadata download dialog: Fix current cover not copyable to clipboard"
+
+    - title: "Fix an incorrect translation of the language 'Polish'"
+      tickets: [1254161] 
+
+  improved recipes:
+    - Economist
+    - Various PostMedia news sources
+
+- version: 1.12.0
+  date: 2013-11-22
+
+  new features:
+    - title: "Auto adding: Option to add files of all types, not just ebooks. You can now tell calibre to auto add all file types, instead of just known ebooks via Preferences->Adding books->Automatic adding."
+      tickets: [1252814]
+
+    - title: "Quick view: Show the title/author/series columns in the same order as in the main book list."
+      tickets: [1253022]
+
+    - title: "Update Kobo driver to allow sending kepubs"
+      tickets: [1252688]
+
+    - title: "Allow right clicking on covers to copy them in the metadata cover download dialog."
+      tickets: [1251793]
+ 
+  bug fixes:
+    - title: "Titlecase: Fix incorrect title casing for some non-English words."
+      tickets: [1253692]
+
+    - title: "Kobo driver: Fix errors when using rating or numerical custom columns to create shelves."
+      tickets: [1253637]
+
+    - title: "E-book viewer: Allow searching to work with hyphenation enabled, provided you are searching for whole words. Searching for partial words may still not work. For robust searching, turn off hyphenation in the viewer preferences."
+
+    - title: "Get books: Update the B&N UK store plugin to handle changes to the B&N UK website"
+
+    - title: "Apply changes being edited when clicking apply in the email preferences list."
+      tickets: [1252758]
+
+    - title: "Fix crash on linux systems whose fontconfig configuration includes paths to in an undecodable encoding."
+
+    - title: "Fix editing custom column values in the book list not allowing change of case."
+      tickets: [1251768]
+
+    - title: "Kobo driver: Fix latest firmware update for Kobo Wifi causing calibre to not recognize it."
+      tickets: [1251536]
+
+    - title: "Content server: Fix virtual libraries with an ampersand in their names not working"
+
+  improved recipes:
+    - Le Monde (free version)
+    - Pecat
+    - Daily Express
+
+  new recipes:
+    - title: Loksatta and Maharashtra Times
+      author: Krittika Goyal
+
+- version: 1.11.0
+  date: 2013-11-15
+
+  new features:
+    - title: "Kobo driver: Support the new firmware version 3.0.0 for Kobo devices"
+
+    - title: "Content server: Show the name of the virtual library at the top when browsing books in a virtual library."
+      tickets: [1251278]
+
+    - title: "Add a keyboard shortcut (Ctrl+*) to convert the current search into a temporary virtual library."
+      tickets: [1249773]
+
+    - title: "Template language: Add a transliterate function, useful to convert metadata in other languages into its phonetic English representation, when exporting books from calibre."
+      tickets: [1249562]
+
+    - title: "Remove the button to toggle search result highlighting from next to the search bar, as too many people click it accidentally and then do not realize what they have done, despite the confirmation message that pops up. The button can be restored via Preferences->Searching"
+
+    - title: "Wireless driver: Remove old non-streaming networking code. Apps that still use it must be updated. A message will popup notifying the user of the need to update if such an app is encountered."
+
+    - title: "Linux: Add an option to cause calibre to detach from its controlling terminal (--detach)"
+ 
+  bug fixes:
+    - title: "DOCX Input: Fix page-breaks created as a page break inside an otherwise empty paragraph not being rendered on conversion to PDF."
+      tickets: [1249502]
+
+    - title: "Windows: When viewing books with an external viewer, check if windows will open the file with calibre itself, and if so, popup an error message telling the user to install some software capable of viewing the file."
+      tickets: [1249698]
+
+    - title: "Wireless driver: Fix a bug that could cause the wrong path information to be sent to the device in some circumstances."
+
+    - title: "Linux binary build: Return proper exit codes when raising SystemExit"
+
+    - title: "Transliterate the Arabic Alef into 'a'"
+      tickets: [1249469]
+
+  improved recipes:
+    - Radikal (tr)
+    - Spiegel Online
+    - El Mundo
+
+  new recipes:
+    - title: ARG Noticias 
+      author: Darko Miletic
+
+- version: 1.10.0
+  date: 2013-11-08
+
+  new features:
+    - title: "Conversion: Treat .docm the same as .docx files, ignoring any macros in the file."
+      tickets: [1247565]
+
+    - title: "EPUB Output: Auto convert CMYK images to RGB. Works around the inability of Adobe Digital Editions to display CMYK images."
+      tickets: [1246710]
+
+    - title: "Quickview: Add a checkbox to lock the quickview window so that it does not change while moving around in the main book list"
+ 
+  bug fixes:
+    - title: "Fix number of marked books shown in the drop down menu of the Mark Books action not being updated when marked books are deleted (as opposed to being unmarked)."
+      tickets: [1248506]
+
+    - title: "Book list: Preserve the current column when using Ctrl+Home or Ctrl+End shortcuts"
+
+    - title: "Booklist: Fix using Page Up/Down keys moving book list by one row too many."
+      tickets: [1248109]
+
+    - title: "Metadata download: Do not auto trim downloaded covers as trimming can sometimes have undesirable effects."
+
+    - title: "Template language: Fix zero valued series indices not formatting correctly"
+      tickets: [1247348]
+
+    - title: "Fix a regression in 1.9 that broke bibtex catalog creation"
+
+    - title: "Quickview: Auto-close the quickview window when changing libraries. You have to open it again in the new library."
+
+    - title: "Linux binary build: Update the bundled version of zlib to fix library compatibility on some newer linux distros that have libpng16 compiled to require newer zlib versions"
+      tickets: [1247315]
+
+  improved recipes:
+    - New York Review of Books
+    - Various Polish news sources
+
+
+- version: 1.9.0
+  date: 2013-11-01
+
+  new features:
+    - title: "Drivers for the new Nook Glowlight, Lenovo IdeaPad and Kindle Fire HDX (linux)"
+      tickets: [1244857, 1246775]
+
+    - title: "Add an option to check for duplicates (books with the same title/author) when copying between libraries. Option is under Preferences->Adding books."
+      tickets: [1245089]
+
+    - title: "Content server: Display book title on details page. Also put the most important fields (authors/series/tags) at the top."
+      tickets: [1246523]
+
+    - title: "When developing recipes using the command line, allow specifying the number of feeds and articles when using the --test parameter."
+      tickets: [1246061]
+
+    - title: "PDF Output: Option to control title of generated Table of Contents"
+      tickets: [1245076]
+
+    - title: "PDF metadata: If one of the keywords in the PDF is a valid ISBN, use it as the ISBN for the book"
+ 
+  bug fixes:
+    - title: "Amazon metadata download: Fix spurious ratings being returned for unrated books."
+      tickets: [1245449]
+
+    - title: "Bulk metadata edit: Only clear series if the clear series checkbox is checked. Also add a clear checkbox for publishers, so that publishers can be removed."
+      tickets: [1245058]
+
+    - title: "Use <h2> for the inserted Table of Contents title for the MOBI and PDF formats as well as the EPUB and AZW3 formats."
+      tickets: [1245076]
+
+    - title: "Fix comments editor in review metadata becoming too small on small screens."
+      tickets: [1245275]
+
+    - title: "DOCX Input: Fix hyperlink showing as underlined even if the hyperlink style in word is set to not show underlines."
+
+    - title: "E-book viewer: Remember the size of the 'Inspect' window used to examine the book's code."
+      tickets: [1245068]
+
+    - title: "Wireless driver: Fix bug that prevented different formats of the same book on the device from being recognized"
+
+    - title: "Bulk metadata download: When downloading only covers and some covers fail, do not show the failed books while reviewing downloaded metadata."
+      tickets: [1238271]
+
+    - title: "BibTeX catalogs: Strip unmatched braces to prevent generation of invalid .bib file."
+      tickets: [1228905]
+
+  improved recipes:
+    - Reuters (Japan)
+    - MIT Technology Review
+    - dotNet Magazine
+    - Science Based News
+
 - version: 1.8.0
   date: 2013-10-25
 

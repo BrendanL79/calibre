@@ -20,7 +20,7 @@ this command starts an embedded python interpreter. You can also run the main
 calibre GUI and the calibre viewer in debug mode.
 
 It also contains interfaces to various bits of calibre that do not have
-dedicated command line tools, such as font subsetting, tweaking ebooks and so
+dedicated command line tools, such as font subsetting, editing ebooks and so
 on.
 
 You can also use %prog to run standalone scripts. To do that use it like this:
@@ -60,8 +60,10 @@ Everything after the -- is passed to the script.
     parser.add_option('-m', '--inspect-mobi', action='store_true',
             default=False,
             help='Inspect the MOBI file(s) at the specified path(s)')
-    parser.add_option('-t', '--tweak-book', default=None,
-            help='Tweak the book (exports the book as a collection of HTML '
+    parser.add_option('-t', '--edit-book', action='store_true',
+            help='Launch the calibre Edit Book tool in debug mode.')
+    parser.add_option('-x', '--explode-book', default=None,
+            help='Explode the book (exports the book as a collection of HTML '
             'files and metadata, which you can edit using standard HTML '
             'editing tools, and then rebuilds the file from the edited HTML. '
             'Makes no additional changes to the HTML, unlike a full calibre '
@@ -248,9 +250,12 @@ def main(args=sys.argv):
     elif opts.inspect_mobi:
         for path in args[1:]:
             inspect_mobi(path)
-    elif opts.tweak_book:
+    elif opts.edit_book:
+        from calibre.gui2.tweak_book.main import main
+        main(['ebook-edit'] + args[1:])
+    elif opts.explode_book:
         from calibre.ebooks.tweak import tweak
-        tweak(opts.tweak_book)
+        tweak(opts.explode_book)
     elif opts.test_build:
         from calibre.test_build import test
         test()

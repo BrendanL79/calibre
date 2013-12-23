@@ -10,7 +10,7 @@ import time
 from threading import Thread
 from functools import partial
 
-from PyQt4.Qt import (QWidget, QVBoxLayout, QLabel, Qt, QPainter, QBrush, QRect)
+from PyQt4.Qt import (QWidget, QVBoxLayout, QLabel, Qt, QPainter, QBrush, QRect, QApplication, QCursor)
 
 from calibre.gui2 import Dispatcher
 from calibre.gui2.progress_indicator import ProgressIndicator
@@ -56,6 +56,7 @@ class BlockingJob(QWidget):
         l.addStretch(10)
         self.setVisible(False)
         self.text = ''
+        self.setFocusPolicy(Qt.NoFocus)
 
     def start(self):
         self.setGeometry(0, 0, self.parent().width(), self.parent().height())
@@ -65,11 +66,17 @@ class BlockingJob(QWidget):
         self.raise_()
         self.setFocus(Qt.OtherFocusReason)
         self.pi.startAnimation()
+        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
     def stop(self):
+        QApplication.restoreOverrideCursor()
         self.pi.stopAnimation()
         self.setVisible(False)
         self.parent().setEnabled(True)
+        # The following line is needed on OS X, because of this bug:
+        # https://bugreports.qt-project.org/browse/QTBUG-34371 it causes
+        # keyboard events to no longer work
+        self.parent().setFocus(Qt.OtherFocusReason)
 
     def job_done(self, callback, job):
         del job.callback
@@ -93,11 +100,6 @@ class BlockingJob(QWidget):
         r = QRect(0, self.dummy.geometry().top() + 10, self.geometry().width(), 150)
         p.drawText(r, Qt.AlignHCenter | Qt.AlignTop | Qt.TextSingleLine, self.text)
         p.end()
-
-    def eventFilter(self, obj, ev):
-        if ev.type() in (ev.KeyPress, ev.KeyRelease):
-            return True
-        return QWidget.eventFilter(self, obj, ev)
 
     def set_msg(self, text):
         self.text = text

@@ -537,6 +537,35 @@ magick_Image_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     return (PyObject *)self;
 }
 
+// Image.constitute {{{
+static PyObject *
+magick_Image_constitute(magick_Image *self, PyObject *args) {
+    const char *map;
+	Py_ssize_t width, height;
+    PyObject *capsule;
+    MagickBooleanType res;
+    void *data;
+    
+    NULL_CHECK(NULL)
+    if (!PyArg_ParseTuple(args, "iisO", &width, &height, &map, &capsule)) return NULL;
+
+    if (!PyCapsule_CheckExact(capsule)) {
+        PyErr_SetString(PyExc_TypeError, "data is not a capsule object");
+        return NULL;
+    }
+
+    data = PyCapsule_GetPointer(capsule,  PyCapsule_GetName(capsule));
+    if (data == NULL) return NULL;
+
+    res = MagickConstituteImage(self->wand, width, height, map, CharPixel, data);
+
+    if (!res)
+        return magick_set_exception(self->wand);
+
+    Py_RETURN_NONE;
+}
+
+// }}}
 
 // Image.load {{{
 static PyObject *
@@ -1125,6 +1154,22 @@ magick_Image_sharpen(magick_Image *self, PyObject *args) {
 }
 // }}}
 
+// Image.blur {{{
+
+static PyObject *
+magick_Image_blur(magick_Image *self, PyObject *args) {
+    double radius, sigma;
+   
+    NULL_CHECK(NULL)
+
+    if (!PyArg_ParseTuple(args, "dd", &radius, &sigma)) return NULL;
+
+    if (!MagickBlurImage(self->wand, radius, sigma)) return magick_set_exception(self->wand);
+
+    Py_RETURN_NONE;
+}
+// }}}
+
 // Image.quantize {{{
 
 static PyObject *
@@ -1252,6 +1297,41 @@ magick_Image_set_opacity(magick_Image *self, PyObject *args) {
 }
 // }}}
 
+// Image.colorspace {{{
+static PyObject *
+magick_Image_colorspace_getter(magick_Image *self, void *closure) {
+    NULL_CHECK(NULL)
+
+    return Py_BuildValue("i", MagickGetImageColorspace(self->wand));
+}
+
+static int
+magick_Image_colorspace_setter(magick_Image *self, PyObject *val, void *closure) {
+    int cs = RGBColorspace;
+
+    NULL_CHECK(-1)
+
+    if (val == NULL) {
+        PyErr_SetString(PyExc_TypeError, "Cannot delete image colorspace");
+        return -1;
+    }
+
+    if (!PyInt_Check(val)) {
+        PyErr_SetString(PyExc_TypeError, "Colorspace must be an integer");
+        return -1;
+    }
+
+    cs = (int)PyInt_AS_LONG(val);
+    if (!MagickSetImageColorspace(self->wand, cs)) {
+        PyErr_Format(PyExc_ValueError, "Could not set image colorspace to %d", cs);
+        return -1;
+    }
+
+    return 0;
+}
+
+// }}}
+
 // Image attr list {{{
 static PyMethodDef magick_Image_methods[] = {
     {"destroy", (PyCFunction)magick_Image_destroy, METH_VARARGS,
@@ -1259,6 +1339,10 @@ static PyMethodDef magick_Image_methods[] = {
 
     {"identify", (PyCFunction)magick_Image_identify, METH_VARARGS,
      "Identify an image from a byte buffer (string)"
+    },
+
+    {"constitute", (PyCFunction)magick_Image_constitute, METH_VARARGS,
+     "constitute(width, height, map, data) -> Create an image from raw (A)RGB data. map should be 'ARGB' or 'PRGB' or whatever is needed for data. data must be a PyCapsule object."
     },
 
     {"load", (PyCFunction)magick_Image_load, METH_VARARGS,
@@ -1363,8 +1447,12 @@ static PyMethodDef magick_Image_methods[] = {
      "sharpen(radius, sigma) \n\n sharpens an image. We convolve the image with a Gaussian operator of the given radius and standard deviation (sigma). For reasonable results, the radius should be larger than sigma. Use a radius of 0 and MagickSharpenImage() selects a suitable radius for you." 
     },
 
+    {"blur", (PyCFunction)magick_Image_blur, METH_VARARGS,
+     "blur(radius, sigma) \n\n blurs an image. We convolve the image with a Gaussian operator of the given radius and standard deviation (sigma). For reasonable results, the radius should be larger than sigma. Use a radius of 0 and MagickBlurImage() selects a suitable radius for you." 
+    },
+
     {"despeckle", (PyCFunction)magick_Image_despeckle, METH_VARARGS,
-     "despeckle() \n\n reduces the speckle noise in an image while perserving the edges of the original image." 
+     "despeckle() \n\n reduces the speckle noise in an image while preserving the edges of the original image." 
     },
 
     {"quantize", (PyCFunction)magick_Image_quantize, METH_VARARGS,
@@ -1395,6 +1483,10 @@ static PyGetSetDef  magick_Image_getsetters[] = {
      (char *)"the image depth.",
      NULL},
 
+    {(char *)"colorspace_",
+     (getter)magick_Image_colorspace_getter, (setter)magick_Image_colorspace_setter,
+     (char *)"the image colorspace.",
+     NULL},
 
     {NULL}  /* Sentinel */
 };

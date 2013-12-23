@@ -25,9 +25,22 @@ from calibre.gui2.viewer.position import PagePosition
 from calibre.gui2.viewer.config import config, ConfigDialog, load_themes
 from calibre.gui2.viewer.image_popup import ImagePopup
 from calibre.gui2.viewer.table_popup import TablePopup
+from calibre.gui2.viewer.inspector import WebInspector
 from calibre.ebooks.oeb.display.webview import load_html
 from calibre.constants import isxp, iswindows
 # }}}
+
+def apply_settings(settings, opts):
+    settings.setFontSize(QWebSettings.DefaultFontSize, opts.default_font_size)
+    settings.setFontSize(QWebSettings.DefaultFixedFontSize, opts.mono_font_size)
+    settings.setFontSize(QWebSettings.MinimumLogicalFontSize, opts.minimum_font_size)
+    settings.setFontSize(QWebSettings.MinimumFontSize, opts.minimum_font_size)
+    settings.setFontFamily(QWebSettings.StandardFont, {'serif':opts.serif_family, 'sans':opts.sans_family, 'mono':opts.mono_family}[opts.standard_font])
+    settings.setFontFamily(QWebSettings.SerifFont, opts.serif_family)
+    settings.setFontFamily(QWebSettings.SansSerifFont, opts.sans_family)
+    settings.setFontFamily(QWebSettings.FixedFont, opts.mono_family)
+    settings.setAttribute(QWebSettings.ZoomTextOnly, True)
+
 
 class Document(QWebPage):  # {{{
 
@@ -37,15 +50,7 @@ class Document(QWebPage):  # {{{
 
     def set_font_settings(self, opts):
         settings = self.settings()
-        settings.setFontSize(QWebSettings.DefaultFontSize, opts.default_font_size)
-        settings.setFontSize(QWebSettings.DefaultFixedFontSize, opts.mono_font_size)
-        settings.setFontSize(QWebSettings.MinimumLogicalFontSize, opts.minimum_font_size)
-        settings.setFontSize(QWebSettings.MinimumFontSize, opts.minimum_font_size)
-        settings.setFontFamily(QWebSettings.StandardFont, {'serif':opts.serif_family, 'sans':opts.sans_family, 'mono':opts.mono_family}[opts.standard_font])
-        settings.setFontFamily(QWebSettings.SerifFont, opts.serif_family)
-        settings.setFontFamily(QWebSettings.SansSerifFont, opts.sans_family)
-        settings.setFontFamily(QWebSettings.FixedFont, opts.mono_family)
-        settings.setAttribute(QWebSettings.ZoomTextOnly, True)
+        apply_settings(settings, opts)
 
     def do_config(self, parent=None):
         d = ConfigDialog(self.shortcuts, parent)
@@ -134,6 +139,15 @@ class Document(QWebPage):  # {{{
         data += b64encode(raw.encode('utf-8'))
         self.settings().setUserStyleSheetUrl(QUrl(data))
 
+    def findText(self, q, flags):
+        if self.hyphenatable:
+            q = unicode(q)
+            hyphenated_q = self.javascript(
+                'hyphenate_text(%s, "%s")' % (json.dumps(q, ensure_ascii=False), self.loaded_lang), typ='string')
+            if QWebPage.findText(self, hyphenated_q, flags):
+                return True
+        return QWebPage.findText(self, q, flags)
+
     def misc_config(self, opts):
         self.hyphenate = opts.hyphenate
         self.hyphenate_default_lang = opts.hyphenate_default_lang
@@ -193,10 +207,14 @@ class Document(QWebPage):  # {{{
     def animated_scroll_done(self):
         self.emit(SIGNAL('animated_scroll_done()'))
 
+    @property
+    def hyphenatable(self):
+        # Qt fails to render soft hyphens correctly on windows xp
+        return not isxp and self.hyphenate and getattr(self, 'loaded_lang', '')
+
     @pyqtSignature("")
     def init_hyphenate(self):
-        # Qt fails to render soft hyphens correctly on windows xp
-        if not isxp and self.hyphenate and getattr(self, 'loaded_lang', ''):
+        if self.hyphenatable:
             self.javascript('do_hyphenation("%s")'%self.loaded_lang)
 
     @pyqtSlot(int)
@@ -479,6 +497,7 @@ class DocumentView(QWebView):  # {{{
         self.document = Document(self.shortcuts, parent=self,
                 debug_javascript=debug_javascript)
         self.setPage(self.document)
+        self.inspector = WebInspector(self, self.document)
         self.manager = None
         self._reference_mode = False
         self._ignore_scrollbar_signals = False
@@ -672,8 +691,7 @@ class DocumentView(QWebView):  # {{{
                 menu.addAction(self.manager.action_font_size_smaller)
 
         menu.addSeparator()
-        inspectAction = self.pageAction(self.document.InspectElement)
-        menu.addAction(inspectAction)
+        menu.addAction(_('Inspect'), self.inspect)
 
         if not text and img.isNull() and self.manager is not None:
             menu.addSeparator()
@@ -684,7 +702,14 @@ class DocumentView(QWebView):  # {{{
             menu.addSeparator()
             menu.addAction(self.manager.action_quit)
 
+        for plugin in self.document.all_viewer_plugins:
+            plugin.customize_context_menu(menu, ev, r)
         menu.exec_(ev.globalPos())
+
+    def inspect(self):
+        self.inspector.show()
+        self.inspector.raise_()
+        self.pageAction(self.document.InspectElement).trigger()
 
     def lookup(self, *args):
         if self.manager is not None:
@@ -772,7 +797,7 @@ class DocumentView(QWebView):  # {{{
 
     def search(self, text, backwards=False):
         flags = self.document.FindBackward if backwards else self.document.FindFlags(0)
-        found = self.findText(text, flags)
+        found = self.document.findText(text, flags)
         if found and self.document.in_paged_mode:
             self.document.javascript('paged_display.snap_to_selection()')
         return found

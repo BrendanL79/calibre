@@ -28,7 +28,8 @@ from calibre.ptempfile import PersistentTemporaryFile
 from calibre.constants import DEBUG
 from calibre.utils.config_base import prefs
 
-EPUB_EXT = '.epub'
+EPUB_EXT  = '.epub'
+KEPUB_EXT = '.kepub'
 
 
 # Implementation of QtQHash for strings. This doesn't seem to be in the Python implementation.
@@ -63,11 +64,11 @@ class KOBO(USBMS):
     gui_name = 'Kobo Reader'
     description = _('Communicate with the Kobo Reader')
     author = 'Timothy Legge and David Forrester'
-    version = (2, 1, 4)
+    version = (2, 1, 6)
 
     dbversion = 0
     fwversion = 0
-    supported_dbversion = 90
+    supported_dbversion = 95
     has_kepubs = False
 
     supported_platforms = ['windows', 'osx', 'linux']
@@ -76,12 +77,14 @@ class KOBO(USBMS):
     book_class = Book
 
     # Ordered list of supported formats
-    FORMATS     = ['epub', 'pdf', 'txt', 'cbz', 'cbr']
+    FORMATS     = ['kepub', 'epub', 'pdf', 'txt', 'cbz', 'cbr']
     CAN_SET_METADATA = ['collections']
 
-    VENDOR_ID   = [0x2237]
-    PRODUCT_ID  = [0x4161, 0x4165]
-    BCD         = [0x0110, 0x0323, 0x0326]
+    VENDOR_ID           = [0x2237]
+    BCD                 = [0x0110, 0x0323, 0x0326]
+    ORIGINAL_PRODUCT_ID = [0x4165]
+    WIFI_PRODUCT_ID     = [0x4161, 0x4162]
+    PRODUCT_ID          = ORIGINAL_PRODUCT_ID + WIFI_PRODUCT_ID
 
     VENDOR_NAME = ['KOBO_INC', 'KOBO']
     WINDOWS_MAIN_MEM = WINDOWS_CARD_A_MEM = ['.KOBOEREADER', 'EREADER']
@@ -380,6 +383,17 @@ class KOBO(USBMS):
 
         self.report_progress(1.0, _('Getting list of books on device...'))
         return bl
+
+    def filename_callback(self, path, mi):
+#        debug_print("Kobo:filename_callback:Path - {0}".format(path))
+
+        idx = path.rfind('.')
+        ext = path[idx:]
+        if ext == KEPUB_EXT:
+            path = path + EPUB_EXT
+#            debug_print("Kobo:filename_callback:New path - {0}".format(path))
+
+        return path
 
     def delete_via_sql(self, ContentID, ContentType):
         # Delete Order:
@@ -887,7 +901,7 @@ class KOBO(USBMS):
         return collections
 
     def sync_booklists(self, booklists, end_session=True):
-        debug_print('KOBO: started sync_booklists')
+        debug_print('KOBO:sync_booklists - start')
         paths = self.get_device_paths()
 
         blists = {}
@@ -909,7 +923,7 @@ class KOBO(USBMS):
             self.update_device_database_collections(blist, collections, oncard)
 
         USBMS.sync_booklists(self, booklists, end_session=end_session)
-        debug_print('KOBO: finished sync_booklists')
+        debug_print('KOBO:sync_booklists - end')
 
     def rebuild_collections(self, booklist, oncard):
         collections_attributes = []
@@ -1242,18 +1256,19 @@ class KOBOTOUCH(KOBO):
     description = 'Communicate with the Kobo Touch, Glo, Mini and Aura HD ereaders. Based on the existing Kobo driver by %s.' % (KOBO.author)
 #    icon        = I('devices/kobotouch.jpg')
 
-    supported_dbversion             = 90
+    supported_dbversion             = 95
     min_supported_dbversion         = 53
     min_dbversion_series            = 65
     min_dbversion_externalid        = 65
     min_dbversion_archive           = 71
     min_dbversion_images_on_sdcard  = 77
-    min_dbversion_activiy           = 77
+    min_dbversion_activity          = 77
     min_dbversion_keywords          = 82
 
-    max_supported_fwversion         = (2,9,1)
-    min_fwversion_images_on_sdcard  = (2,4,1)
-    min_fwversion_images_tree       = (2,9,0)  # Cover images stored in tree under .kobo-images
+    max_supported_fwversion         = (3, 1, 5)
+    min_fwversion_shelves           = (2, 0, 0)
+    min_fwversion_images_on_sdcard  = (2, 4, 1)
+    min_fwversion_images_tree       = (2, 9, 0)  # Cover images stored in tree under .kobo-images
 
     has_kepubs = True
 
@@ -1357,23 +1372,23 @@ class KOBOTOUCH(KOBO):
     # Image file name endings. Made up of: image size, min_dbversion, max_dbversion, isFullSize,
     COVER_FILE_ENDINGS = {
                           ' - N3_FULL.parsed':[(600,800),0, 99,True,],            # Used for screensaver, home screen
-                          ' - N3_LIBRARY_FULL.parsed':[(355,473),0, 81,False,],   # Used for Details screen
+                          ' - N3_LIBRARY_FULL.parsed':[(355,473),0, 99,False,],   # Used for Details screen before FW2.8.1, then for current book tile on home screen
                           ' - N3_LIBRARY_GRID.parsed':[(149,198),0, 99,False,],   # Used for library lists
                           ' - N3_LIBRARY_LIST.parsed':[(60,90),0, 53,False,],
-                          ' - AndroidBookLoadTablet_Aspect.parsed':[(355,473), 82, 99,False,],   # Used for Details screen
+                          ' - AndroidBookLoadTablet_Aspect.parsed':[(355,473), 82, 99,False,],   # Used for Details screen from FW2.8.1
 #                          ' - N3_LIBRARY_SHELF.parsed': [(40,60),0, 52,],
                           }
     GLO_COVER_FILE_ENDINGS = {      # Glo and Aura share resolution, so the image sizes should be the same.
                           ' - N3_FULL.parsed':[(758,1024),0, 99,True,],           # Used for screensaver, home screen
-                          ' - N3_LIBRARY_FULL.parsed':[(355,479),0, 99,False,],   # Used for Details screen
+                          ' - N3_LIBRARY_FULL.parsed':[(355,479),0, 99,False,],   # Used for Details screen before FW2.8.1, then for current book tile on home screen 
                           ' - N3_LIBRARY_GRID.parsed':[(149,201),0, 99,False,],   # Used for library lists
-#                          ' - N3_LIBRARY_LIST.parsed':[(60,90),0, 53,],
-#                          ' - N3_LIBRARY_SHELF.parsed': [(40,60),0, 52,],
+                          ' - AndroidBookLoadTablet_Aspect.parsed':[(355,479), 88, 99,False,],   # Used for Details screen from FW2.8.1
                           }
     AURA_HD_COVER_FILE_ENDINGS = {
                           ' - N3_FULL.parsed':        [(1080,1440), 0, 99,True,],  # Used for screensaver, home screen
-                          ' - N3_LIBRARY_FULL.parsed':[(355,  471), 0, 99,False,],  # Used for Details screen
+                          ' - N3_LIBRARY_FULL.parsed':[(355,  471), 0, 99,False,],  # Used for Details screen before FW2.8.1, then for current book tile on home screen
                           ' - N3_LIBRARY_GRID.parsed':[(149,  198), 0, 99,False,],  # Used for library lists
+                          ' - AndroidBookLoadTablet_Aspect.parsed':[(355,  471), 88, 99,False,],   # Used for Details screen from FW2.8.1
                           }
     # Following are the sizes used with pre2.1.4 firmware
 #    COVER_FILE_ENDINGS = {
@@ -2175,7 +2190,7 @@ class KOBOTOUCH(KOBO):
                 if self.dbversion < 53:
                     debug_print("KoboTouch:update_device_database_collections - calling reset_readstatus")
                     self.reset_readstatus(connection, oncard)
-                if self.dbversion >= 14:
+                if self.dbversion >= 14 and self.fwversion < self.min_fwversion_shelves:
                     debug_print("KoboTouch:update_device_database_collections - calling reset_favouritesindex")
                     self.reset_favouritesindex(connection, oncard)
 
@@ -2249,7 +2264,7 @@ class KOBOTOUCH(KOBO):
                 debug_print("No Collections - reseting ReadStatus")
                 if self.dbversion < 53:
                     self.reset_readstatus(connection, oncard)
-                if self.dbversion >= 14:
+                if self.dbversion >= 14 and self.fwversion < self.min_fwversion_shelves:
                     debug_print("No Collections - resetting FavouritesIndex")
                     self.reset_favouritesindex(connection, oncard)
 
@@ -2809,7 +2824,7 @@ class KOBOTOUCH(KOBO):
         return self.dbversion >= self.min_dbversion_externalid
 
     def has_activity_table(self):
-        return self.dbversion >= self.min_dbversion_activiy
+        return self.dbversion >= self.min_dbversion_activity
 
     def modify_database_check(self, function):
         # Checks to see whether the database version is supported

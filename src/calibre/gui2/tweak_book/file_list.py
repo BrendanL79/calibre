@@ -6,24 +6,80 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
+import os
 from binascii import hexlify
-from PyQt4.Qt import (
-    QWidget, QTreeWidget, QGridLayout, QSize, Qt, QTreeWidgetItem, QIcon,
-    QStyledItemDelegate, QStyle, QPixmap, QPainter, pyqtSignal)
+from collections import OrderedDict, defaultdict
+from functools import partial
 
-from calibre import human_readable
+import sip
+from PyQt4.Qt import (
+    QWidget, QTreeWidget, QGridLayout, QSize, Qt, QTreeWidgetItem, QIcon, QFont,
+    QStyledItemDelegate, QStyle, QPixmap, QPainter, pyqtSignal, QMenu, QTimer,
+    QDialogButtonBox, QDialog, QLabel, QLineEdit, QVBoxLayout, QScrollArea,
+    QRadioButton, QFormLayout, QSpinBox, QListWidget, QListWidgetItem, QCheckBox)
+
+from calibre import human_readable, sanitize_file_name_unicode
 from calibre.ebooks.oeb.base import OEB_STYLES, OEB_DOCS
-from calibre.ebooks.oeb.polish.container import guess_type
-from calibre.ebooks.oeb.polish.cover import get_cover_page_name, get_raster_cover_name
-from calibre.gui2 import error_dialog
-from calibre.gui2.tweak_book import current_container
+from calibre.ebooks.oeb.polish.container import guess_type, OEB_FONTS
+from calibre.ebooks.oeb.polish.cover import (
+    get_cover_page_name, get_raster_cover_name, is_raster_image)
+from calibre.gui2 import error_dialog, choose_files, question_dialog, elided_text, choose_save_file
+from calibre.gui2.tweak_book import current_container, tprefs
+from calibre.gui2.tweak_book.editor import syntax_from_mime
+from calibre.gui2.tweak_book.templates import template_for
 from calibre.utils.icu import sort_key
 
 TOP_ICON_SIZE = 24
 NAME_ROLE = Qt.UserRole
 CATEGORY_ROLE = NAME_ROLE + 1
 LINEAR_ROLE = CATEGORY_ROLE + 1
+MIME_ROLE = LINEAR_ROLE + 1
 NBSP = '\xa0'
+
+def name_is_ok(name, show_error):
+    if not name or not name.strip():
+        return show_error('') and False
+    ext = name.rpartition('.')[-1]
+    if not ext or ext == name:
+        return show_error(_('The file name must have an extension')) and False
+    norm = name.replace('\\', '/')
+    parts = name.split('/')
+    for x in parts:
+        if sanitize_file_name_unicode(x) != x:
+            return show_error(_('The file name contains invalid characters')) and False
+    if current_container().has_name(norm):
+        return show_error(_('This file name already exists in the book')) and False
+    show_error('')
+    return True
+
+def get_bulk_rename_settings(parent, number, msg=None, sanitize=sanitize_file_name_unicode, leading_zeros=True):  # {{{
+    d = QDialog(parent)
+    d.l = l = QFormLayout(d)
+    d.setLayout(l)
+    d.prefix = p = QLineEdit(d)
+    p.setText(_('Chapter-'))
+    p.selectAll()
+    d.la = la = QLabel(msg or _(
+        'All selected files will be renamed to the form prefix-number'))
+    l.addRow(la)
+    l.addRow(_('&Prefix:'), p)
+    d.num = num = QSpinBox(d)
+    num.setMinimum(0), num.setValue(1), num.setMaximum(1000)
+    l.addRow(_('Starting &number:'), num)
+    d.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    bb.accepted.connect(d.accept), bb.rejected.connect(d.reject)
+    l.addRow(bb)
+
+    if d.exec_() == d.Accepted:
+        prefix = sanitize(unicode(d.prefix.text()))
+        num = d.num.value()
+        fmt = '%d'
+        if leading_zeros:
+            largest = num + number - 1
+            fmt = '%0{0}d'.format(len(str(largest)))
+        return prefix + fmt, num
+    return None, None
+# }}}
 
 class ItemDelegate(QStyledItemDelegate):  # {{{
 
@@ -31,7 +87,20 @@ class ItemDelegate(QStyledItemDelegate):  # {{{
 
     def setEditorData(self, editor, index):
         name = unicode(index.data(NAME_ROLE).toString())
+        # We do this because Qt calls selectAll() unconditionally on the
+        # editor, and we want only a part of the file name to be selected
+        QTimer.singleShot(0, partial(self.set_editor_data, name, editor))
+
+    def set_editor_data(self, name, editor):
+        if sip.isdeleted(editor):
+            return
         editor.setText(name)
+        ext_pos = name.rfind('.')
+        slash_pos = name.rfind('/')
+        if ext_pos > -1 and slash_pos > -1 and ext_pos > slash_pos + 1:
+            editor.setSelection(slash_pos+1, ext_pos - slash_pos - 1)
+        else:
+            editor.selectAll()
 
     def setModelData(self, editor, model, index):
         newname = unicode(editor.text())
@@ -52,7 +121,10 @@ class ItemDelegate(QStyledItemDelegate):  # {{{
             if top_level:
                 suffix = '%s(%d)' % (NBSP, index.model().rowCount(index))
             else:
-                suffix = NBSP + human_readable(current_container().filesize(unicode(index.data(NAME_ROLE).toString())))
+                try:
+                    suffix = NBSP + human_readable(current_container().filesize(unicode(index.data(NAME_ROLE).toString())))
+                except EnvironmentError:
+                    suffix = NBSP + human_readable(0)
             br = painter.boundingRect(option.rect, Qt.AlignRight|Qt.AlignVCenter, suffix)
         if top_level and index.row() > 0:
             option.rect.adjust(0, 5, 0, 0)
@@ -71,9 +143,17 @@ class FileList(QTreeWidget):
     delete_requested = pyqtSignal(object, object)
     reorder_spine = pyqtSignal(object)
     rename_requested = pyqtSignal(object, object)
+    bulk_rename_requested = pyqtSignal(object)
+    edit_file = pyqtSignal(object, object, object)
+    merge_requested = pyqtSignal(object, object, object)
+    mark_requested = pyqtSignal(object, object)
+    export_requested = pyqtSignal(object, object)
+    replace_requested = pyqtSignal(object, object, object, object)
+    link_stylesheets_requested = pyqtSignal(object, object, object)
 
     def __init__(self, parent=None):
         QTreeWidget.__init__(self, parent)
+        self.current_edited_name = None
         self.delegate = ItemDelegate(self)
         self.delegate.rename_requested.connect(self.rename_requested)
         self.setTextElideMode(Qt.ElideMiddle)
@@ -106,6 +186,7 @@ class FileList(QTreeWidget):
                 'misc':'mimetypes/dir.png',
                 'images':'view-image.png',
             }.iteritems()}
+        self.itemDoubleClicked.connect(self.item_double_clicked)
 
     def get_state(self):
         s = {'pos':self.verticalScrollBar().value()}
@@ -122,6 +203,44 @@ class FileList(QTreeWidget):
                 name = unicode(c.data(0, NAME_ROLE).toString())
                 if name in state['selected']:
                     c.setSelected(True)
+
+    def item_from_name(self, name):
+        for parent in self.categories.itervalues():
+            for c in (parent.child(i) for i in xrange(parent.childCount())):
+                q = unicode(c.data(0, NAME_ROLE).toString())
+                if q == name:
+                    return c
+
+    def select_name(self, name):
+        for parent in self.categories.itervalues():
+            for c in (parent.child(i) for i in xrange(parent.childCount())):
+                q = unicode(c.data(0, NAME_ROLE).toString())
+                c.setSelected(q == name)
+                if q == name:
+                    self.scrollToItem(c)
+
+    def mark_name_as_current(self, name):
+        current = self.item_from_name(name)
+        if current is not None:
+            if self.current_edited_name is not None:
+                ci = self.item_from_name(self.current_edited_name)
+                if ci is not None:
+                    ci.setData(0, Qt.FontRole, None)
+            self.current_edited_name = name
+            self.mark_item_as_current(current)
+
+    def mark_item_as_current(self, item):
+        font = QFont(self.font())
+        font.setItalic(True)
+        font.setBold(True)
+        item.setData(0, Qt.FontRole, font)
+
+    def clear_currently_edited_name(self):
+        if self.current_edited_name:
+            ci = self.item_from_name(self.current_edited_name)
+            if ci is not None:
+                ci.setData(0, Qt.FontRole, None)
+        self.current_edited_name = None
 
     def build(self, container, preserve_state=True):
         if preserve_state:
@@ -157,18 +276,20 @@ class FileList(QTreeWidget):
         for names in container.manifest_type_map.itervalues():
             manifested_names |= set(names)
 
-        font_types = {guess_type('a.'+x) for x in ('ttf', 'otf', 'woff')}
-
-        def get_category(mt):
+        def get_category(name, mt):
             category = 'misc'
             if mt.startswith('image/'):
                 category = 'images'
-            elif mt in font_types:
+            elif mt in OEB_FONTS:
                 category = 'fonts'
             elif mt in OEB_STYLES:
                 category = 'styles'
             elif mt in OEB_DOCS:
                 category = 'text'
+            ext = name.rpartition('.')[-1].lower()
+            if ext in {'ttf', 'otf', 'woff'}:
+                # Probably wrong mimetype in the OPF
+                category = 'fonts'
             return category
 
         def set_display_name(name, item):
@@ -216,10 +337,11 @@ class FileList(QTreeWidget):
 
         ok_to_be_unmanifested = container.names_that_need_not_be_manifested
         cannot_be_renamed = container.names_that_must_not_be_changed
+        ncx_mime = guess_type('a.ncx')
 
         def create_item(name, linear=None):
             imt = container.mime_map.get(name, guess_type(name))
-            icat = get_category(imt)
+            icat = get_category(name, imt)
             category = 'text' if linear is not None else ({'text':'misc'}.get(icat, icat))
             item = QTreeWidgetItem(self.categories['text' if linear is not None else category], 1)
             flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -232,11 +354,16 @@ class FileList(QTreeWidget):
             item.setData(0, NAME_ROLE, name)
             item.setData(0, CATEGORY_ROLE, category)
             item.setData(0, LINEAR_ROLE, bool(linear))
+            item.setData(0, MIME_ROLE, imt)
             set_display_name(name, item)
             # TODO: Add appropriate tooltips based on the emblems
             emblems = []
             if name in {cover_page_name, cover_image_name}:
                 emblems.append('default_cover.png')
+            if name in container.opf_name:
+                emblems.append('metadata.png')
+            if imt == ncx_mime:
+                emblems.append('toc.png')
             if name not in manifested_names and name not in ok_to_be_unmanifested:
                 emblems.append('dialog_question.png')
             if linear is False:
@@ -270,8 +397,91 @@ class FileList(QTreeWidget):
         if preserve_state:
             self.set_state(state)
 
+        if self.current_edited_name:
+            item = self.item_from_name(self.current_edited_name)
+            if item is not None:
+                self.mark_item_as_current(item)
+
     def show_context_menu(self, point):
-        pass  # TODO: Implement this
+        item = self.itemAt(point)
+        if item is None or item in set(self.categories.itervalues()):
+            return
+        m = QMenu(self)
+        sel = self.selectedItems()
+        num = len(sel)
+        container = current_container()
+        ci = self.currentItem()
+        if ci is not None:
+            cn = unicode(ci.data(0, NAME_ROLE).toString())
+            mt = unicode(ci.data(0, MIME_ROLE).toString())
+            cat = unicode(ci.data(0, CATEGORY_ROLE).toString())
+            n = elided_text(cn.rpartition('/')[-1])
+            m.addAction(QIcon(I('save.png')), _('Export %s') % n, partial(self.export, cn))
+            if cn not in container.names_that_must_not_be_changed and cn not in container.names_that_must_not_be_removed and mt not in OEB_FONTS:
+                m.addAction(_('Replace %s with file...') % n, partial(self.replace, cn))
+            m.addSeparator()
+
+            m.addAction(QIcon(I('modified.png')), _('&Rename %s') % n, self.edit_current_item)
+            if is_raster_image(mt):
+                m.addAction(QIcon(I('default_cover.png')), _('Mark %s as cover image') % n, partial(self.mark_as_cover, cn))
+            elif current_container().SUPPORTS_TITLEPAGES and mt in OEB_DOCS and cat == 'text':
+                m.addAction(QIcon(I('default_cover.png')), _('Mark %s as cover page') % n, partial(self.mark_as_titlepage, cn))
+            m.addSeparator()
+
+        if num > 0:
+            m.addSeparator()
+            if num > 1:
+                m.addAction(QIcon(I('modified.png')), _('&Bulk rename selected files'), self.request_bulk_rename)
+            m.addAction(QIcon(I('trash.png')), _('&Delete selected files'), self.request_delete)
+            m.addSeparator()
+
+        selected_map = defaultdict(list)
+        for item in sel:
+            selected_map[unicode(item.data(0, CATEGORY_ROLE).toString())].append(unicode(item.data(0, NAME_ROLE).toString()))
+
+        for items in selected_map.itervalues():
+            items.sort(key=self.index_of_name)
+
+        if selected_map['text']:
+            m.addAction(QIcon(I('format-text-color.png')), _('Link &stylesheets...'), partial(self.link_stylesheets, selected_map['text']))
+
+        if len(selected_map['text']) > 1:
+            m.addAction(QIcon(I('merge.png')), _('&Merge selected text files'), partial(self.start_merge, 'text', selected_map['text']))
+        if len(selected_map['styles']) > 1:
+            m.addAction(QIcon(I('merge.png')), _('&Merge selected style files'), partial(self.start_merge, 'styles', selected_map['styles']))
+
+        if len(list(m.actions())) > 0:
+            m.popup(self.mapToGlobal(point))
+
+    def index_of_name(self, name):
+        for category, parent in self.categories.iteritems():
+            for i in xrange(parent.childCount()):
+                item = parent.child(i)
+                if unicode(item.data(0, NAME_ROLE).toString()) == name:
+                    return (category, i)
+        return (None, -1)
+
+    def start_merge(self, category, names):
+        d = MergeDialog(names, self)
+        if d.exec_() == d.Accepted and d.ans:
+            self.merge_requested.emit(category, names, d.ans)
+
+    def edit_current_item(self):
+        if self.currentItem() is not None:
+            self.editItem(self.currentItem())
+
+    def mark_as_cover(self, name):
+        self.mark_requested.emit(name, 'cover')
+
+    def mark_as_titlepage(self, name):
+        first = unicode(self.categories['text'].child(0).data(0, NAME_ROLE).toString()) == name
+        move_to_start = False
+        if not first:
+            move_to_start = question_dialog(self, _('Not first item'), _(
+                '%s is not the first text item. You should only mark the'
+                ' first text item as cover. Do you want to make it the'
+                ' first item?') % elided_text(name))
+        self.mark_requested.emit(name, 'titlepage:%r' % move_to_start)
 
     def keyPressEvent(self, ev):
         if ev.key() in (Qt.Key_Delete, Qt.Key_Backspace):
@@ -279,6 +489,23 @@ class FileList(QTreeWidget):
             self.request_delete()
         else:
             return QTreeWidget.keyPressEvent(self, ev)
+
+    def request_bulk_rename(self):
+        names = {unicode(item.data(0, NAME_ROLE).toString()) for item in self.selectedItems()}
+        bad = names & current_container().names_that_must_not_be_changed
+        if bad:
+            return error_dialog(self, _('Cannot rename'),
+                         _('The file(s) %s cannot be renamed.') % ('<b>%s</b>' % ', '.join(bad)), show=True)
+        names = sorted(names, key=self.index_of_name)
+        fmt, num = get_bulk_rename_settings(self, len(names))
+        if fmt is not None:
+            def change_name(name, num):
+                parts = name.split('/')
+                base, ext = parts[-1].rpartition('.')[0::2]
+                parts[-1] = (fmt % num) + '.' + ext
+                return '/'.join(parts)
+            name_map = {n:change_name(n, num + i) for i, n in enumerate(names)}
+            self.bulk_rename_requested.emit(name_map)
 
     def request_delete(self):
         names = {unicode(item.data(0, NAME_ROLE).toString()) for item in self.selectedItems()}
@@ -306,7 +533,9 @@ class FileList(QTreeWidget):
                     if unicode(child.data(0, NAME_ROLE).toString()) in other_removals:
                         removals.append(child)
 
-        for c in removals:
+        # The sorting by index is necessary otherwise Qt crashes with recursive
+        # repaint detected message
+        for c in sorted(removals, key=lambda x:x.parent().indexOfChild(x), reverse=True):
             c.parent().removeChild(c)
 
     def dropEvent(self, event):
@@ -327,11 +556,221 @@ class FileList(QTreeWidget):
                     order[i][1] = True
             self.reorder_spine.emit(order)
 
-class FileListWidget(QWidget):
+    def item_double_clicked(self, item, column):
+        self._request_edit(item)
 
-    delete_requested = pyqtSignal(object, object)
-    reorder_spine = pyqtSignal(object)
-    rename_requested = pyqtSignal(object, object)
+    def _request_edit(self, item):
+        category = unicode(item.data(0, CATEGORY_ROLE).toString())
+        mime = unicode(item.data(0, MIME_ROLE).toString())
+        name = unicode(item.data(0, NAME_ROLE).toString())
+        syntax = {'text':'html', 'styles':'css'}.get(category, None)
+        self.edit_file.emit(name, syntax, mime)
+
+    def request_edit(self, name):
+        item = self.item_from_name(name)
+        if item is not None:
+            self._request_edit(item)
+        else:
+            error_dialog(self, _('Cannot edit'),
+                         _('No item with the name: %s was found') % name, show=True)
+
+    @property
+    def all_files(self):
+        return (category.child(i) for category in self.categories.itervalues() for i in xrange(category.childCount()))
+
+    @property
+    def searchable_names(self):
+        ans = {'text':OrderedDict(), 'styles':OrderedDict(), 'selected':OrderedDict()}
+        for item in self.all_files:
+            category = unicode(item.data(0, CATEGORY_ROLE).toString())
+            mime = unicode(item.data(0, MIME_ROLE).toString())
+            name = unicode(item.data(0, NAME_ROLE).toString())
+            ok = category in {'text', 'styles'}
+            if ok:
+                ans[category][name] = syntax_from_mime(name, mime)
+            if not ok and category == 'misc':
+                ok = mime in {guess_type('a.'+x) for x in ('opf', 'ncx', 'txt', 'xml')}
+            if ok and item.isSelected():
+                ans['selected'][name] = syntax_from_mime(name, mime)
+        return ans
+
+    def export(self, name):
+        path = choose_save_file(self, 'tweak_book_export_file', _('Choose location'), filters=[
+            (_('Files'), [name.rpartition('.')[-1].lower()])], all_files=False)
+        if path:
+            self.export_requested.emit(name, path)
+
+    def replace(self, name):
+        c = current_container()
+        mt = c.mime_map[name]
+        oext = name.rpartition('.')[-1].lower()
+        filters = [oext]
+        fname = _('Files')
+        if mt in OEB_DOCS:
+            fname = _('HTML Files')
+            filters = 'html htm xhtm xhtml shtml'.split()
+        elif is_raster_image(mt):
+            fname = _('Images')
+            filters = 'jpeg jpg gif png'.split()
+        path = choose_files(self, 'tweak_book_import_file', _('Choose file'), filters=[(fname, filters)], select_only_single_file=True)
+        if not path:
+            return
+        path = path[0]
+        ext = path.rpartition('.')[-1].lower()
+        force_mt = None
+        if mt in OEB_DOCS:
+            force_mt = c.guess_type('a.html')
+        nname = os.path.basename(path)
+        nname, ext = nname.rpartition('.')[0::2]
+        nname = nname + '.' + ext.lower()
+        self.replace_requested.emit(name, path, nname, force_mt)
+
+    def link_stylesheets(self, names):
+        s = self.categories['styles']
+        sheets = [unicode(s.child(i).data(0, NAME_ROLE).toString()) for i in xrange(s.childCount())]
+        if not sheets:
+            return error_dialog(self, _('No stylesheets'), _(
+                'This book currently has no stylesheets. You must first create a stylesheet'
+                ' before linking it.'), show=True)
+        d = QDialog(self)
+        d.l = l = QVBoxLayout(d)
+        d.setLayout(l)
+        d.setWindowTitle(_('Choose stylesheets'))
+        d.la = la = QLabel(_('Choose the stylesheets to link. Drag and drop to re-arrange'))
+
+        la.setWordWrap(True)
+        l.addWidget(la)
+        d.s = s = QListWidget(d)
+        l.addWidget(s)
+        s.setDragEnabled(True)
+        s.setDropIndicatorShown(True)
+        s.setDragDropMode(self.InternalMove)
+        s.setAutoScroll(True)
+        s.setDefaultDropAction(Qt.MoveAction)
+        for name in sheets:
+            i = QListWidgetItem(name, s)
+            flags = Qt.ItemIsEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsDragEnabled | Qt.ItemIsSelectable
+            i.setFlags(flags)
+            i.setCheckState(Qt.Checked)
+        d.r = r = QCheckBox(_('Remove existing links to stylesheets'))
+        r.setChecked(tprefs['remove_existing_links_when_linking_sheets'])
+        l.addWidget(r)
+        d.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(d.accept), bb.rejected.connect(d.reject)
+        l.addWidget(bb)
+        if d.exec_() == d.Accepted:
+            tprefs['remove_existing_links_when_linking_sheets'] = r.isChecked()
+            sheets = [unicode(s.item(i).text()) for i in xrange(s.count()) if s.item(i).checkState() == Qt.Checked]
+            if sheets:
+                self.link_stylesheets_requested.emit(names, sheets, r.isChecked())
+
+class NewFileDialog(QDialog):  # {{{
+
+    def __init__(self, initial_choice='html', parent=None):
+        QDialog.__init__(self, parent)
+        self.l = l = QVBoxLayout()
+        self.setLayout(l)
+        self.la = la = QLabel(_(
+            'Choose a name for the new (blank) file'))
+        self.setWindowTitle(_('Choose file'))
+        l.addWidget(la)
+        self.name = n = QLineEdit(self)
+        n.textChanged.connect(self.update_ok)
+        l.addWidget(n)
+        self.err_label = la = QLabel('')
+        la.setWordWrap(True)
+        l.addWidget(la)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        l.addWidget(bb)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        self.imp_button = b = bb.addButton(_('Import resource file (image/font/etc.)'), bb.ActionRole)
+        b.setIcon(QIcon(I('view-image.png')))
+        b.setToolTip(_('Import a file from your computer as a new'
+                       ' file into the book.'))
+        b.clicked.connect(self.import_file)
+
+        self.ok_button = bb.button(bb.Ok)
+
+        self.file_data = b''
+        self.using_template = False
+
+    def show_error(self, msg):
+        self.err_label.setText('<p style="color:red">' + msg)
+        return False
+
+    def import_file(self):
+        path = choose_files(self, 'tweak-book-new-resource-file', _('Choose file'), select_only_single_file=True)
+        if path:
+            path = path[0]
+            with open(path, 'rb') as f:
+                self.file_data = f.read()
+            name = os.path.basename(path)
+            self.name.setText(name)
+            self.la.setText(_('Choose a name for the imported file'))
+
+    @property
+    def name_is_ok(self):
+        return name_is_ok(unicode(self.name.text()), self.show_error)
+
+    def update_ok(self, *args):
+        self.ok_button.setEnabled(self.name_is_ok)
+
+    def accept(self):
+        if not self.name_is_ok:
+            return error_dialog(self, _('No name specified'), _(
+                'You must specify a name for the new file, with an extension, for example, chapter1.html'), show=True)
+        name = unicode(self.name.text())
+        name, ext = name.rpartition('.')[0::2]
+        name = (name + '.' + ext.lower()).replace('\\', '/')
+        mt = guess_type(name)
+        if not self.file_data:
+            if mt in OEB_DOCS:
+                self.file_data = template_for('html').encode('utf-8')
+                self.using_template = True
+            elif mt in OEB_STYLES:
+                self.file_data = template_for('css').encode('utf-8')
+                self.using_template = True
+        self.file_name = name
+        QDialog.accept(self)
+# }}}
+
+class MergeDialog(QDialog):  # {{{
+
+    def __init__(self, names, parent=None):
+        QDialog.__init__(self, parent)
+        self.setWindowTitle(_('Choose master file'))
+        self.l = l = QVBoxLayout()
+        self.setLayout(l)
+        self.la = la = QLabel(_('Choose the master file. All selected files will be merged into the master file:'))
+        la.setWordWrap(True)
+        l.addWidget(la)
+        self.sa = sa = QScrollArea(self)
+        l.addWidget(sa)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        l.addWidget(bb)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        self.w = w = QWidget(self)
+        w.l = QVBoxLayout()
+        w.setLayout(w.l)
+
+        buttons = self.buttons = [QRadioButton(n) for n in names]
+        buttons[0].setChecked(True)
+        map(w.l.addWidget, buttons)
+        sa.setWidget(w)
+
+        self.resize(self.sizeHint() + QSize(150, 20))
+
+    @property
+    def ans(self):
+        for b in self.buttons:
+            if b.isChecked():
+                return unicode(b.text())
+
+# }}}
+
+class FileListWidget(QWidget):
 
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
@@ -339,12 +778,19 @@ class FileListWidget(QWidget):
         self.file_list = FileList(self)
         self.layout().addWidget(self.file_list)
         self.layout().setContentsMargins(0, 0, 0, 0)
-        for x in ('delete_requested', 'reorder_spine', 'rename_requested'):
-            getattr(self.file_list, x).connect(getattr(self, x))
-        for x in ('delete_done',):
+        self.forwarded_signals = {k for k, o in vars(self.file_list.__class__).iteritems() if isinstance(o, pyqtSignal) and '_' in k and not hasattr(self, k)}
+        for x in ('delete_done', 'select_name', 'request_edit', 'mark_name_as_current', 'clear_currently_edited_name'):
             setattr(self, x, getattr(self.file_list, x))
 
     def build(self, container, preserve_state=True):
         self.file_list.build(container, preserve_state=preserve_state)
 
+    @property
+    def searchable_names(self):
+        return self.file_list.searchable_names
+
+    def __getattr__(self, name):
+        if name in self.forwarded_signals:
+            return getattr(self.file_list, name)
+        return QWidget.__getattr__(self, name)
 

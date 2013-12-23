@@ -14,17 +14,18 @@ from setup import Command, modules, basenames, functions, __version__, \
 
 SITE_PACKAGES = ['PIL', 'dateutil', 'dns', 'PyQt4', 'mechanize',
         'sip.so', 'BeautifulSoup.py', 'cssutils', 'encutils', 'lxml',
-        'sipconfig.py', 'xdg', 'dbus', '_dbus_bindings.so', 'dbus_bindings.py',
+        'sipconfig.py', 'xdg', 'dbus', '_dbus_bindings.so',
         '_dbus_glib_bindings.so', 'netifaces.so', '_psutil_posix.so',
         '_psutil_linux.so', 'psutil', 'cssselect', 'apsw.so']
 
 QTDIR          = '/usr/lib/qt4'
 QTDLLS         = ('QtCore', 'QtGui', 'QtNetwork', 'QtSvg', 'QtXml', 'QtWebKit', 'QtDBus', 'QtXmlPatterns')
 MAGICK_PREFIX = '/usr'
+is64bit = platform.architecture()[0] == '64bit'
 binary_includes = [
                 '/usr/bin/pdftohtml',
                 '/usr/bin/pdfinfo',
-                '/usr/lib/libusb-1.0.so.0',
+                '/usr/lib/libusb-1.0.so.0' if is64bit else '/lib/libusb-1.0.so.0',
                 '/usr/lib/libmtp.so.9',
                 '/usr/lib/libglib-2.0.so.0',
                 '/usr/bin/pdftoppm',
@@ -65,10 +66,10 @@ binary_includes = [
                 '/usr/lib/libicui18n.so.49',
                 '/usr/lib/libicuuc.so.49',
                 '/usr/lib/libicuio.so.49',
+                '/usr/lib/libdbus-1.so.3',
                 ]
 binary_includes += [os.path.join(QTDIR, 'lib%s.so.4'%x) for x in QTDLLS]
 
-is64bit = platform.architecture()[0] == '64bit'
 arch = 'x86_64' if is64bit else 'i686'
 
 
@@ -386,8 +387,13 @@ class LinuxFreeze(Command):
                     mod = __import__(sys.calibre_module, fromlist=[1])
                     func = getattr(mod, sys.calibre_function)
                     return func()
-                except SystemExit:
-                    raise
+                except SystemExit as err:
+                    if err.code is None:
+                        return 0
+                    if isinstance(err.code, int):
+                        return err.code
+                    print (err.code)
+                    return 1
                 except:
                     import traceback
                     traceback.print_exc()

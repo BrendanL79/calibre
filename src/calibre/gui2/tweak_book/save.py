@@ -17,6 +17,28 @@ from calibre.ptempfile import PersistentTemporaryFile
 from calibre.gui2.progress_indicator import ProgressIndicator
 from calibre.utils import join_with_timeout
 from calibre.utils.filenames import atomic_rename
+from calibre.utils.ipc import RC
+
+def save_container(container, path):
+    temp = PersistentTemporaryFile(
+        prefix=('_' if iswindows else '.'), suffix=os.path.splitext(path)[1], dir=os.path.dirname(path))
+    temp.close()
+    temp = temp.name
+    try:
+        container.commit(temp)
+        atomic_rename(temp, path)
+    finally:
+        if os.path.exists(temp):
+            os.remove(temp)
+
+def send_message(msg=''):
+    if msg:
+        t = RC(print_error=False)
+        t.start()
+        t.join(3)
+        if t.done:
+            t.conn.send('bookedited:'+msg)
+            t.conn.close()
 
 class SaveWidget(QWidget):
 
@@ -33,6 +55,7 @@ class SaveWidget(QWidget):
         self.stop()
 
     def start(self):
+        self.pi.setDisplaySize(self.label.height())
         self.pi.setVisible(True)
         self.pi.startAnimation()
         self.label.setText(_('Saving...'))
@@ -40,7 +63,7 @@ class SaveWidget(QWidget):
     def stop(self):
         self.pi.setVisible(False)
         self.pi.stopAnimation()
-        self.label.setText(_('Saved'))
+        self.label.setText('')
 
 class SaveManager(QObject):
 
@@ -48,12 +71,17 @@ class SaveManager(QObject):
     report_error = pyqtSignal(object)
     save_done = pyqtSignal()
 
-    def __init__(self, parent):
+    def __init__(self, parent, notify=None):
         QObject.__init__(self, parent)
         self.count = 0
         self.last_saved = -1
         self.requests = LifoQueue()
+        self.notify_requests = LifoQueue()
+        self.notify_data = notify
         t = Thread(name='save-thread', target=self.run)
+        t.daemon = True
+        t.start()
+        t = Thread(name='notify-thread', target=self.notify_calibre)
         t.daemon = True
         t.start()
         self.status_widget = w = SaveWidget(parent)
@@ -80,6 +108,15 @@ class SaveManager(QObject):
             finally:
                 self.requests.task_done()
 
+    def notify_calibre(self):
+        while True:
+            if not self.notify_requests.get():
+                break
+            send_message(self.notify_data)
+
+    def clear_notify_data(self):
+        self.notify_data = None
+
     def __empty_queue(self):
         ' Only to be used during shutdown '
         while True:
@@ -102,20 +139,13 @@ class SaveManager(QObject):
             import traceback
             self.report_error.emit(traceback.format_exc())
         self.save_done.emit()
+        if self.notify_data:
+            self.notify_requests.put(True)
 
     def do_save(self, tdir, container):
-        temp = None
         try:
-            path = container.path_to_ebook
-            temp = PersistentTemporaryFile(
-                prefix=('_' if iswindows else '.'), suffix=os.path.splitext(path)[1], dir=os.path.dirname(path))
-            temp.close()
-            temp = temp.name
-            container.commit(temp)
-            atomic_rename(temp, path)
+            save_container(container, container.path_to_ebook)
         finally:
-            if temp and os.path.exists(temp):
-                os.remove(temp)
             shutil.rmtree(tdir, ignore_errors=True)
 
     @property
@@ -134,3 +164,4 @@ class SaveManager(QObject):
 
     def shutdown(self):
         self.requests.put(None)
+        self.notify_requests.put(None)

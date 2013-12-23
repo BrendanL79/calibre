@@ -146,6 +146,12 @@ class OptionSet(object):
         self.preferences.append(pref)
         self.defaults[name] = default
 
+    def retranslate_help(self):
+        t = _
+        for opt in self.preferences:
+            if opt.help:
+                opt.help = t(opt.help)
+
     def option_parser(self, user_defaults=None, usage='', gui_mode=False):
         from calibre.utils.config import OptionParser
         parser = OptionParser(usage, gui_mode=gui_mode)
@@ -342,6 +348,9 @@ class ConfigProxy(object):
     def refresh(self):
         self.__opts = self.__config.parse()
 
+    def retranslate_help(self):
+        self.__config.option_set.retranslate_help()
+
     def __getitem__(self, key):
         return self.get(key)
 
@@ -398,6 +407,8 @@ def _prefs():
             help=_('Swap author first and last names when reading metadata'))
     c.add_opt('add_formats_to_existing', default=False,
             help=_('Add new formats to existing book records'))
+    c.add_opt('check_for_dupes_on_ctl', default=False,
+            help=_('Check for duplicates when copying to another library'))
     c.add_opt('installation_uuid', default=None, help='Installation UUID')
     c.add_opt('new_book_tags', default=[], help=_('Tags to apply to books added to the library'))
     c.add_opt('mark_new_books', default=False, help=_(

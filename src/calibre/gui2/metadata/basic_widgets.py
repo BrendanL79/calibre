@@ -227,6 +227,21 @@ class AuthorsEdit(EditWithComplete):
         self.setSizeAdjustPolicy(self.AdjustToMinimumContentsLengthWithIcon)
         self.manage_authors_signal = manage_authors
         manage_authors.triggered.connect(self.manage_authors)
+        self.lineEdit().createStandardContextMenu = self.createStandardContextMenu
+
+    def createStandardContextMenu(self):
+        menu = QLineEdit.createStandardContextMenu(self.lineEdit())
+        menu.addSeparator()
+        menu.addAction(_('&Edit authors'), self.edit_authors)
+        return menu
+
+    def edit_authors(self):
+        all_authors = self.lineEdit().all_items
+        current_authors = self.current_val
+        from calibre.gui2.dialogs.authors_edit import AuthorsEdit
+        d = AuthorsEdit(all_authors, current_authors, self)
+        if d.exec_() == d.Accepted:
+            self.current_val = d.authors
 
     def manage_authors(self):
         if self.original_val != self.current_val:
@@ -911,12 +926,15 @@ class Cover(ImageView):  # {{{
                     self.clicked.connect(action)
 
         self.select_cover_button = CB(_('&Browse'), 'document_open.png', self.select_cover)
-        self.trim_cover_button = b = CB(_('T&rim borders'), 'trim.png', self.trim_cover)
+        self.trim_cover_button = b = CB(_('T&rim borders'), 'trim.png')
         b.setToolTip(_(
             'Automatically detect and remove extra space at the cover\'s edges.\n'
             'Pressing it repeatedly can sometimes remove stubborn borders.'))
         b.m = m = QMenu()
-        b.setPopupMode(QToolButton.DelayedPopup)
+        b.setPopupMode(QToolButton.InstantPopup)
+        m.addAction(QIcon(I('trim.png')), _('Automatically trim borders'), self.trim_cover)
+        m.addSeparator()
+        m.addAction(_('Trim borders manually'), self.manual_trim_cover)
         m.addAction(QIcon(I('edit-undo.png')), _('Undo last trim'), self.undo_trim)
         b.setMenu(m)
         self.remove_cover_button = CB(_('&Remove'), 'trash.png', self.remove_cover)
@@ -989,6 +1007,14 @@ class Cover(ImageView):  # {{{
         im.trim(tweaks['cover_trim_fuzz_value'])
         self.current_val = im.export('png')
         self.cdata_before_trim = cdata
+
+    def manual_trim_cover(self):
+        cdata = self.current_val
+        from calibre.gui2.dialogs.trim_image import TrimImage
+        d = TrimImage(cdata, parent=self)
+        if d.exec_() == d.Accepted and d.image_data is not None:
+            self.current_val = d.image_data
+            self.cdata_before_trim = cdata
 
     def generate_cover(self, *args):
         from calibre.ebooks import calibre_cover
